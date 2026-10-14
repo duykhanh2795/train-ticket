@@ -1,0 +1,16 @@
+# Copy to config.yaml for local development, or provide these as environment variables.
+# Environment variables take precedence over this file.
+http_address: ":8080"
+
+# How long a seat remains temporarily held before payment confirmation.
+booking_hold_duration: 10m
+
+# Keep credentials in DATABASE_URL rather than committing them to this file.
+database_url: ""
+
+# Kafka is used by the background worker to publish booking lifecycle events.
+kafka_brokers:
+  - "localhost:9092"
+kafka_topic: "booking.events"
+kafka_consumer_group: "notification-v1"
+worker_metrics_address: "127.0.0.1:9091"

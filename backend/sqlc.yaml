@@ -1,0 +1,52 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/auth/adapters/outbound/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/auth/adapters/outbound/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/schedule/adapters/outbound/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/schedule/adapters/outbound/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/inventory/adapters/outbound/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/inventory/adapters/outbound/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/booking/adapters/outbound/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/booking/adapters/outbound/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/notification/adapters/outbound/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/notification/adapters/outbound/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true
