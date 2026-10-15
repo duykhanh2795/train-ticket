@@ -65,6 +65,10 @@ function clock(value: string) {
   return format(new Date(value), "HH:mm");
 }
 
+function fareLabel(amount: number | null | undefined) {
+  return amount == null ? "Chưa có giá" : `${new Intl.NumberFormat("vi-VN").format(amount)} ₫`;
+}
+
 function tripDuration(start: string, end: string) {
   const duration = intervalToDuration({
     start: new Date(start),
@@ -87,7 +91,7 @@ export function RailBookingExperience() {
   const {
     search,
     trip,
-    seat,
+    selectedSeats,
     booking,
     setSearch,
     chooseTrip,
@@ -97,6 +101,8 @@ export function RailBookingExperience() {
   } = useBookingStore();
   const [now, setNow] = useState(0);
   const [minDate, setMinDate] = useState("");
+  const [passengerNames, setPassengerNames] = useState<Record<string, string>>({});
+  const [passengerError, setPassengerError] = useState("");
   const searchForm = useForm<SearchForm>({
     resolver: zodResolver(searchSchema),
     defaultValues: {
@@ -122,6 +128,8 @@ export function RailBookingExperience() {
     onSettled: () => {
       queryClient.setQueryData(["auth", "me"], null);
       reset();
+      setPassengerNames({});
+      setPassengerError("");
     },
   });
   const tripsQuery = useQuery({
@@ -139,7 +147,11 @@ export function RailBookingExperience() {
     mutationFn: () =>
       holdBooking({
         trip_id: trip!.trip_id,
-        seat_id: seat!.seat_id,
+        passengers: selectedSeats.map((item, index) => ({
+          seat_id: item.seat_id,
+          full_name: (passengerNames[item.seat_id] ??
+            (index === 0 ? authQuery.data?.user?.full_name : "") ?? "").trim(),
+        })),
         from_stop: trip!.from_stop,
         to_stop: trip!.to_stop,
       }),
@@ -184,12 +196,20 @@ export function RailBookingExperience() {
       : 0;
   const from = search ? stationName(search.originId) : "Hà Nội";
   const to = search ? stationName(search.destinationId) : "Sài Gòn";
-  const seatAvailable =
-    seatsQuery.data?.seats.find((item) => item.seat_id === seat?.seat_id)
-      ?.available ?? false;
+  const selectedCurrentSeats = selectedSeats.map((selected) =>
+    seatsQuery.data?.seats.find((item) => item.seat_id === selected.seat_id),
+  );
+  const seatsAvailable = selectedCurrentSeats.every(
+    (item) => item?.available && item.fare_vnd != null,
+  );
+  const estimatedFare = selectedCurrentSeats.every((item) => item?.fare_vnd != null)
+    ? selectedCurrentSeats.reduce((sum, item) => sum + (item?.fare_vnd ?? 0), 0)
+    : null;
 
   function submitSearch(values: SearchForm) {
     reset();
+    setPassengerNames({});
+    setPassengerError("");
     setSearch(values);
     window.setTimeout(
       () =>
@@ -209,6 +229,8 @@ export function RailBookingExperience() {
   }
   function selectTrip(value: TripSearchItem) {
     chooseTrip(value);
+    setPassengerNames({});
+    setPassengerError("");
     holdMutation.reset();
     confirmMutation.reset();
     window.setTimeout(
@@ -221,6 +243,8 @@ export function RailBookingExperience() {
   }
   function startAgain() {
     reset();
+    setPassengerNames({});
+    setPassengerError("");
     holdMutation.reset();
     confirmMutation.reset();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -230,19 +254,27 @@ export function RailBookingExperience() {
       router.push("/login?return=booking");
       return;
     }
+    if (selectedSeats.some((item, index) =>
+      (passengerNames[item.seat_id] ??
+        (index === 0 ? authQuery.data?.user?.full_name : "") ?? "").trim().length < 2
+    )) {
+      setPassengerError("Nhập họ tên cho từng hành khách (ít nhất 2 ký tự). ");
+      return;
+    }
+    setPassengerError("");
     holdMutation.mutate();
   }
 
   return (
     <div id="top" className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-5 md:px-8">
           <a
             href="#top"
-            className="flex items-center gap-2 text-xl font-black tracking-tight text-foreground"
+            className="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
             aria-label="Railway về đầu trang"
           >
-            <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <TrainFront className="size-5" />
             </span>
             railway<span className="-ml-2 text-muted-foreground">.</span>
@@ -264,6 +296,14 @@ export function RailBookingExperience() {
                 <span className="hidden max-w-30 truncate text-xs font-semibold text-foreground sm:block">
                   {authQuery.data.user.full_name}
                 </span>
+                <Link
+                  href="/bookings"
+                  className={buttonVariants({ variant: "ghost" })}
+                  aria-label="Đặt chỗ của tôi"
+                >
+                  <Ticket className="size-4" />
+                  <span className="hidden sm:inline">Đặt chỗ</span>
+                </Link>
                 <Button
                   variant="ghost"
                   onClick={() => logoutMutation.mutate()}
@@ -292,7 +332,7 @@ export function RailBookingExperience() {
 
       <main>
         <section className="border-b border-border bg-background">
-          <div className="mx-auto grid max-w-7xl items-center gap-8 px-5 py-12 md:grid-cols-2 md:px-8 md:py-16">
+          <div className="mx-auto grid max-w-7xl items-center gap-8 px-5 py-10 md:grid-cols-2 md:px-8 md:py-12">
             <div>
               <Badge
                 variant="outline"
@@ -300,7 +340,7 @@ export function RailBookingExperience() {
               >
                 HÀNH TRÌNH BẮT ĐẦU TỪ ĐÂY
               </Badge>
-              <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+              <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
                 Đi xa hơn.
                 <br />
                 <span className="text-muted-foreground">Dễ dàng hơn.</span>
@@ -363,7 +403,7 @@ export function RailBookingExperience() {
 
         <section
           id="search"
-          className="mx-auto max-w-7xl scroll-mt-24 px-5 py-12 md:px-8"
+          className="mx-auto max-w-7xl scroll-mt-24 px-5 py-10 md:px-8"
         >
           <Card className="bg-card shadow-none">
             <CardHeader className="sm:flex sm:flex-row sm:items-center sm:justify-between">
@@ -614,14 +654,22 @@ export function RailBookingExperience() {
                       <h3 className="mt-2 text-base font-semibold text-foreground">
                         {booking.status === "confirmed"
                           ? "Hành trình đã sẵn sàng!"
-                          : "Ghế đã được giữ cho bạn"}
+                          : "Các ghế đã được giữ cho bạn"}
                       </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         Mã đặt chỗ <strong>{booking.booking_id}</strong>
                       </p>
+                      <Link
+                        href={`/bookings/${encodeURIComponent(booking.booking_id)}`}
+                        className="mt-2 inline-flex items-center gap-1 text-sm font-medium underline underline-offset-4"
+                      >
+                        Xem chi tiết đặt chỗ <ArrowRight className="size-3" />
+                      </Link>
                       <p className="mt-3 text-sm text-muted-foreground">
-                        Tàu {trip.train_number} · Toa {seat?.coach_number} · Ghế{" "}
-                        {seat?.seat_number}
+                        Tàu {trip.train_number} · {selectedSeats.length} ghế
+                      </p>
+                      <p className="mt-1 text-sm font-medium">
+                        Giá đã chốt: {fareLabel(booking.fare_vnd)}
                       </p>
                       {booking.status === "held" && (
                         <p className="mt-2 text-sm font-semibold text-foreground">
@@ -669,10 +717,9 @@ export function RailBookingExperience() {
                     <Badge variant="secondary" className="w-fit gap-1">
                       <TrainFront className="size-3" /> SƠ ĐỒ CHỖ NGỒI
                     </Badge>
-                    <CardTitle>Chọn một ghế phù hợp</CardTitle>
+                    <CardTitle>Chọn ghế cho hành khách</CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      Trạng thái lấy từ hệ thống. Ghế chỉ được giữ sau khi bạn
-                      xác nhận.
+                      Chọn tối đa 6 ghế. Ghế chỉ được giữ sau khi bạn xác nhận.
                     </p>
                     <div className="flex flex-wrap gap-4 pt-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1.5">
@@ -748,17 +795,18 @@ export function RailBookingExperience() {
                                       key={item.seat_id}
                                       type="button"
                                       variant="outline"
-                                      disabled={!item.available}
-                                      aria-pressed={
-                                        seat?.seat_id === item.seat_id
+                                      disabled={
+                                        (!item.available || selectedSeats.length >= 6) &&
+                                        !selectedSeats.some((selected) => selected.seat_id === item.seat_id)
                                       }
-                                      title={`${item.seat_type} · Ghế ${item.seat_number}`}
+                                      aria-pressed={selectedSeats.some((selected) => selected.seat_id === item.seat_id)}
+                                      title={`${item.seat_type} · Ghế ${item.seat_number} · ${fareLabel(item.fare_vnd)}`}
                                       className={cn(
                                         "font-semibold",
                                         !item.available &&
                                           "bg-muted text-muted-foreground",
-                                        seat?.seat_id === item.seat_id
-                                          ? "border-foreground bg-primary text-primary-foreground hover:bg-primary/85 hover:text-primary-foreground"
+                                        selectedSeats.some((selected) => selected.seat_id === item.seat_id)
+                                          ? "border-primary bg-accent text-accent-foreground hover:bg-accent/80 hover:text-accent-foreground"
                                           : "border-border bg-background text-foreground hover:bg-muted",
                                       )}
                                       onClick={() => chooseSeat(item)}
@@ -809,12 +857,41 @@ export function RailBookingExperience() {
                     />
                     <SummaryRow
                       label="Chỗ ngồi"
-                      value={
-                        seat
-                          ? `Toa ${seat.coach_number} · Ghế ${seat.seat_number}`
-                          : "Chưa chọn"
-                      }
+                      value={selectedSeats.length
+                        ? selectedSeats.map((item) => `${item.coach_number}-${item.seat_number}`).join(", ")
+                        : "Chưa chọn"}
                     />
+                    <SummaryRow
+                      label="Giá vé dự kiến"
+                      value={fareLabel(estimatedFare)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Giá được tính lại và chốt khi giữ chỗ.
+                    </p>
+                    {selectedSeats.length > 0 && (
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium">Thông tin hành khách</p>
+                        {selectedSeats.map((item, index) => (
+                          <div key={item.seat_id} className="space-y-1">
+                            <Label htmlFor={`passenger-${item.seat_id}`}>
+                              Ghế {item.coach_number}-{item.seat_number}
+                            </Label>
+                            <Input
+                              id={`passenger-${item.seat_id}`}
+                              maxLength={120}
+                              autoComplete="name"
+                              placeholder="Họ và tên hành khách"
+                              value={passengerNames[item.seat_id] ??
+                                (index === 0 ? authQuery.data?.user?.full_name : "") ?? ""}
+                              onChange={(event) => {
+                                setPassengerNames((current) => ({ ...current, [item.seat_id]: event.target.value }));
+                                setPassengerError("");
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <Separator />
                     {authQuery.data?.user ? (
                       <div className="flex items-center gap-2 rounded-lg bg-muted p-3">
@@ -838,17 +915,18 @@ export function RailBookingExperience() {
                         {apiErrorMessage(holdMutation.error)}
                       </p>
                     )}
+                    {passengerError && <p className="text-sm text-destructive">{passengerError}</p>}
                     <Button
                       className="w-full"
                       onClick={holdSelectedSeat}
                       disabled={
-                        !seat || !seatAvailable || holdMutation.isPending
+                        selectedSeats.length === 0 || !seatsAvailable || holdMutation.isPending
                       }
                     >
                       {holdMutation.isPending
                         ? "Đang giữ ghế..."
                         : authQuery.data?.user
-                          ? "Giữ chỗ ngay"
+                          ? `Giữ ${selectedSeats.length} chỗ ngay`
                           : "Đăng nhập để giữ chỗ"}
                       <ArrowRight className="size-4" />
                     </Button>
@@ -903,7 +981,7 @@ export function RailBookingExperience() {
         </section>
         <section
           id="about"
-          className="mx-auto grid max-w-7xl gap-8 px-5 py-12 md:grid-cols-[1fr_auto] md:items-center md:px-8"
+          className="mx-auto max-w-7xl px-5 py-10 md:px-8"
         >
           <div>
             <p className="text-xs font-bold tracking-widest text-foreground">
@@ -923,9 +1001,6 @@ export function RailBookingExperience() {
             >
               Khám phá hành trình <ArrowUpRight className="size-4" />
             </a>
-          </div>
-          <div className="flex size-36 items-center justify-center rounded-full bg-muted text-foreground">
-            <TrainFront className="size-16" />
           </div>
         </section>
       </main>
@@ -958,8 +1033,8 @@ function TripCard({
   return (
     <Card
       className={cn(
-        "bg-card transition-colors hover:bg-muted/30",
-        selected && "ring-2 ring-foreground",
+        "bg-card transition-colors hover:bg-accent/20",
+        selected && "ring-1 ring-primary",
       )}
     >
       <CardContent className="grid gap-5 md:grid-cols-[130px_1fr_auto] md:items-center">
@@ -989,9 +1064,14 @@ function TripCard({
           </div>
         </div>
         <div className="flex items-center justify-between gap-3 md:flex-col md:items-end">
-          <span className="text-xs text-muted-foreground">
-            {format(new Date(trip.departure_at), "dd MMM yyyy", { locale: vi })}
-          </span>
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">
+              {format(new Date(trip.departure_at), "dd MMM yyyy", { locale: vi })}
+            </p>
+            <p className="mt-1 text-sm font-medium">
+              {trip.fare_from_vnd == null ? "Chưa có giá" : `Từ ${fareLabel(trip.fare_from_vnd)}`}
+            </p>
+          </div>
           <Button onClick={onSelect}>
             {selected ? "Đang chọn" : "Chọn chuyến"}
             <ArrowRight className="size-4" />

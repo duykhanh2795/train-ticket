@@ -1,0 +1,10 @@
+import { authorizedBackendProxy } from "@/shared/api/session";
+
+export async function GET(request: Request) {
+  const query = new URL(request.url).searchParams;
+  const params = new URLSearchParams({
+    limit: query.get("limit") ?? "20",
+    offset: query.get("offset") ?? "0",
+  });
+  return authorizedBackendProxy(`api/v1/bookings?${params}`);
+}

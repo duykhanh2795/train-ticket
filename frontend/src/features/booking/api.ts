@@ -1,5 +1,11 @@
 import { apiClient } from "@/shared/api/client";
-import type { BookingResponse, HoldBookingInput, SeatResponse } from "./types";
+import type {
+  BookingPage,
+  BookingResponse,
+  BookingView,
+  HoldBookingInput,
+  SeatResponse,
+} from "./types";
 
 export async function listSeats(
   tripId: string,
@@ -28,6 +34,30 @@ export async function holdBooking(
 export async function confirmBooking(id: string): Promise<BookingResponse> {
   const response = await apiClient.post<BookingResponse>(
     `/bookings/${encodeURIComponent(id)}/confirm`,
+  );
+  return response.data;
+}
+
+export async function cancelBooking(id: string): Promise<BookingResponse> {
+  const response = await apiClient.post<BookingResponse>(
+    `/bookings/${encodeURIComponent(id)}/cancel`,
+  );
+  return response.data;
+}
+
+export async function listBookings(
+  limit = 10,
+  offset = 0,
+): Promise<BookingPage> {
+  const response = await apiClient.get<BookingPage>("/bookings", {
+    params: { limit, offset },
+  });
+  return response.data;
+}
+
+export async function getBooking(id: string): Promise<BookingView> {
+  const response = await apiClient.get<BookingView>(
+    `/bookings/${encodeURIComponent(id)}`,
   );
   return response.data;
 }

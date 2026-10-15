@@ -12,6 +12,7 @@ export interface TripSearchItem {
   to_stop: number;
   departure_at: string;
   arrival_at: string;
+  fare_from_vnd: number | null;
 }
 
 export interface TripSearchResponse {
