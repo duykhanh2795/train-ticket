@@ -8,16 +8,19 @@ WHERE trip_seats.trip_id = sqlc.arg(trip_id)
   AND trip_seats.seat_id = sqlc.arg(seat_id)
 FOR UPDATE OF trip_seats;
 
--- name: LockSeatForBooking :one
-SELECT
-    trip_seats.trip_id,
-    trip_seats.seat_id,
+-- name: ListBookingSeatIDs :many
+SELECT seat_id FROM seat_reservations
+WHERE booking_id = sqlc.arg(booking_id)
+ORDER BY seat_id;
+
+-- name: LockBookingSeat :one
+SELECT trip_seats.trip_id, trip_seats.seat_id,
     (SELECT COUNT(*)::INTEGER FROM trip_stops WHERE trip_id = trip_seats.trip_id) AS stop_count
 FROM seat_reservations
-JOIN trip_seats
-  ON trip_seats.trip_id = seat_reservations.trip_id
- AND trip_seats.seat_id = seat_reservations.seat_id
+JOIN trip_seats ON trip_seats.trip_id = seat_reservations.trip_id
+               AND trip_seats.seat_id = seat_reservations.seat_id
 WHERE seat_reservations.booking_id = sqlc.arg(booking_id)
+  AND seat_reservations.seat_id = sqlc.arg(seat_id)
 FOR UPDATE OF trip_seats;
 
 -- name: ListSeatReservations :many
@@ -35,9 +38,7 @@ VALUES (
     sqlc.arg(booking_id), sqlc.arg(trip_id), sqlc.arg(seat_id),
     sqlc.arg(from_stop), sqlc.arg(to_stop), sqlc.arg(status), sqlc.arg(expires_at)
 )
-ON CONFLICT (booking_id) DO UPDATE SET
-    trip_id = EXCLUDED.trip_id,
-    seat_id = EXCLUDED.seat_id,
+ON CONFLICT (booking_id, seat_id) DO UPDATE SET
     from_stop = EXCLUDED.from_stop,
     to_stop = EXCLUDED.to_stop,
     status = EXCLUDED.status,

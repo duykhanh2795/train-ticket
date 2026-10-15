@@ -48,17 +48,31 @@ func (r *InventoryRepository) LoadForUpdate(
 	return r.loadInventory(ctx, queries, seat.TripID, seat.SeatID, int(seat.StopCount))
 }
 
-func (r *InventoryRepository) LoadForBookingUpdate(ctx context.Context, bookingID string) (domain.SeatInventory, error) {
+func (r *InventoryRepository) ListBookingSeatIDs(ctx context.Context, bookingID string) ([]string, error) {
+	if err := platformpostgres.RequireTransaction(ctx); err != nil {
+		return nil, err
+	}
+	seatIDs, err := sqlcgen.New(platformpostgres.Executor(ctx, r.pool)).ListBookingSeatIDs(ctx, bookingID)
+	if err != nil {
+		return nil, fmt.Errorf("list seats for booking %q: %w", bookingID, err)
+	}
+	if len(seatIDs) == 0 {
+		return nil, domain.ErrReservationNotFound
+	}
+	return seatIDs, nil
+}
+
+func (r *InventoryRepository) LoadForBookingSeatUpdate(ctx context.Context, bookingID, seatID string) (domain.SeatInventory, error) {
 	if err := platformpostgres.RequireTransaction(ctx); err != nil {
 		return domain.SeatInventory{}, err
 	}
 	queries := sqlcgen.New(platformpostgres.Executor(ctx, r.pool))
-	seat, err := queries.LockSeatForBooking(ctx, bookingID)
+	seat, err := queries.LockBookingSeat(ctx, sqlcgen.LockBookingSeatParams{BookingID: bookingID, SeatID: seatID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.SeatInventory{}, domain.ErrReservationNotFound
 	}
 	if err != nil {
-		return domain.SeatInventory{}, fmt.Errorf("lock seat for booking %q: %w", bookingID, err)
+		return domain.SeatInventory{}, fmt.Errorf("lock booking seat: %w", err)
 	}
 	return r.loadInventory(ctx, queries, seat.TripID, seat.SeatID, int(seat.StopCount))
 }

@@ -16,6 +16,7 @@ func newBookingLifecycleEvent(booking bookingdomain.Booking, eventType string, o
 		CustomerID string    `json:"customer_id"`
 		TripID     string    `json:"trip_id"`
 		Status     string    `json:"status"`
+		FareVND    int64     `json:"fare_vnd"`
 		OccurredAt time.Time `json:"occurred_at"`
 	}{
 		EventID:    fmt.Sprintf("%s:%s", booking.ID(), eventType),
@@ -24,6 +25,7 @@ func newBookingLifecycleEvent(booking bookingdomain.Booking, eventType string, o
 		CustomerID: booking.CustomerID(),
 		TripID:     booking.TripID(),
 		Status:     booking.Status().String(),
+		FareVND:    booking.FareVND(),
 		OccurredAt: occurredAt,
 	})
 	if err != nil {

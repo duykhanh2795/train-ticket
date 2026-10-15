@@ -30,6 +30,13 @@ type Booking struct {
 	Status     string
 	CreatedAt  pgtype.Timestamptz
 	ExpiresAt  pgtype.Timestamptz
+	FareVnd    pgtype.Int8
+}
+
+type BookingPassenger struct {
+	BookingID string
+	SeatID    string
+	FullName  string
 }
 
 type NotificationInbox struct {
@@ -97,6 +104,13 @@ type TripSeat struct {
 	CoachNumber string
 	SeatNumber  string
 	SeatType    string
+}
+
+type TripSegmentFare struct {
+	TripID    string
+	FromStop  int16
+	SeatType  string
+	AmountVnd int64
 }
 
 type TripStop struct {

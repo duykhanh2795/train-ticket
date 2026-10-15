@@ -27,6 +27,11 @@ type TripSearchResult struct {
 	ToStop      int
 	DepartureAt time.Time
 	ArrivalAt   time.Time
+	FareFromVND *int64
+}
+
+type FareQuotes interface {
+	Quotes(ctx context.Context, tripID string, fromStop, toStop int) (map[string]int64, error)
 }
 
 // TripSearchRepository is the output port used by the search use case.
@@ -36,13 +41,14 @@ type TripSearchRepository interface {
 
 type SearchTrips struct {
 	repository TripSearchRepository
+	fares      FareQuotes
 }
 
-func NewSearchTrips(repository TripSearchRepository) (*SearchTrips, error) {
-	if repository == nil {
-		return nil, errors.New("trip search repository is required")
+func NewSearchTrips(repository TripSearchRepository, fares FareQuotes) (*SearchTrips, error) {
+	if repository == nil || fares == nil {
+		return nil, errors.New("trip search repository and fare quotes are required")
 	}
-	return &SearchTrips{repository: repository}, nil
+	return &SearchTrips{repository: repository, fares: fares}, nil
 }
 
 func (uc *SearchTrips) Execute(ctx context.Context, query TripSearchQuery) ([]TripSearchResult, error) {
@@ -63,6 +69,18 @@ func (uc *SearchTrips) Execute(ctx context.Context, query TripSearchQuery) ([]Tr
 	results, err := uc.repository.Search(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("search trips: %w", err)
+	}
+	for i := range results {
+		quotes, err := uc.fares.Quotes(ctx, results[i].TripID, results[i].FromStop, results[i].ToStop)
+		if err != nil {
+			return nil, fmt.Errorf("quote trip %q: %w", results[i].TripID, err)
+		}
+		for _, amount := range quotes {
+			if results[i].FareFromVND == nil || amount < *results[i].FareFromVND {
+				price := amount
+				results[i].FareFromVND = &price
+			}
+		}
 	}
 	return results, nil
 }

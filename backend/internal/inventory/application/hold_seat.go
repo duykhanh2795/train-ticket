@@ -47,23 +47,41 @@ func (s *SeatReservationService) HoldSeat(ctx context.Context, command HoldSeatC
 }
 
 func (s *SeatReservationService) ConfirmReservation(ctx context.Context, bookingID string, at time.Time) error {
-	inventory, err := s.repository.LoadForBookingUpdate(ctx, bookingID)
+	seatIDs, err := s.repository.ListBookingSeatIDs(ctx, bookingID)
 	if err != nil {
 		return err
 	}
-	if err := inventory.Confirm(bookingID, at); err != nil {
-		return err
+	for _, seatID := range seatIDs {
+		inventory, err := s.repository.LoadForBookingSeatUpdate(ctx, bookingID, seatID)
+		if err != nil {
+			return err
+		}
+		if err := inventory.Confirm(bookingID, at); err != nil {
+			return err
+		}
+		if err := s.repository.Save(ctx, inventory); err != nil {
+			return err
+		}
 	}
-	return s.repository.Save(ctx, inventory)
+	return nil
 }
 
 func (s *SeatReservationService) ReleaseReservation(ctx context.Context, bookingID string) error {
-	inventory, err := s.repository.LoadForBookingUpdate(ctx, bookingID)
+	seatIDs, err := s.repository.ListBookingSeatIDs(ctx, bookingID)
 	if err != nil {
 		return err
 	}
-	if err := inventory.Release(bookingID); err != nil {
-		return err
+	for _, seatID := range seatIDs {
+		inventory, err := s.repository.LoadForBookingSeatUpdate(ctx, bookingID, seatID)
+		if err != nil {
+			return err
+		}
+		if err := inventory.Release(bookingID); err != nil {
+			return err
+		}
+		if err := s.repository.Save(ctx, inventory); err != nil {
+			return err
+		}
 	}
-	return s.repository.Save(ctx, inventory)
+	return nil
 }

@@ -8,6 +8,7 @@ import (
 
 type InventoryRepository interface {
 	LoadForUpdate(ctx context.Context, tripID, seatID string) (domain.SeatInventory, error)
-	LoadForBookingUpdate(ctx context.Context, bookingID string) (domain.SeatInventory, error)
+	LoadForBookingSeatUpdate(ctx context.Context, bookingID, seatID string) (domain.SeatInventory, error)
+	ListBookingSeatIDs(ctx context.Context, bookingID string) ([]string, error)
 	Save(ctx context.Context, inventory domain.SeatInventory) error
 }

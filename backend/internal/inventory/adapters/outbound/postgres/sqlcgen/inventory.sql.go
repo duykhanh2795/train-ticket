@@ -11,6 +11,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listBookingSeatIDs = `-- name: ListBookingSeatIDs :many
+SELECT seat_id FROM seat_reservations
+WHERE booking_id = $1
+ORDER BY seat_id
+`
+
+func (q *Queries) ListBookingSeatIDs(ctx context.Context, bookingID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listBookingSeatIDs, bookingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var seat_id string
+		if err := rows.Scan(&seat_id); err != nil {
+			return nil, err
+		}
+		items = append(items, seat_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSeatReservations = `-- name: ListSeatReservations :many
 SELECT booking_id, from_stop, to_stop, status, expires_at
 FROM seat_reservations
@@ -121,28 +147,31 @@ func (q *Queries) ListTripSeats(ctx context.Context, arg ListTripSeatsParams) ([
 	return items, nil
 }
 
-const lockSeatForBooking = `-- name: LockSeatForBooking :one
-SELECT
-    trip_seats.trip_id,
-    trip_seats.seat_id,
+const lockBookingSeat = `-- name: LockBookingSeat :one
+SELECT trip_seats.trip_id, trip_seats.seat_id,
     (SELECT COUNT(*)::INTEGER FROM trip_stops WHERE trip_id = trip_seats.trip_id) AS stop_count
 FROM seat_reservations
-JOIN trip_seats
-  ON trip_seats.trip_id = seat_reservations.trip_id
- AND trip_seats.seat_id = seat_reservations.seat_id
+JOIN trip_seats ON trip_seats.trip_id = seat_reservations.trip_id
+               AND trip_seats.seat_id = seat_reservations.seat_id
 WHERE seat_reservations.booking_id = $1
+  AND seat_reservations.seat_id = $2
 FOR UPDATE OF trip_seats
 `
 
-type LockSeatForBookingRow struct {
+type LockBookingSeatParams struct {
+	BookingID string
+	SeatID    string
+}
+
+type LockBookingSeatRow struct {
 	TripID    string
 	SeatID    string
 	StopCount int32
 }
 
-func (q *Queries) LockSeatForBooking(ctx context.Context, bookingID string) (LockSeatForBookingRow, error) {
-	row := q.db.QueryRow(ctx, lockSeatForBooking, bookingID)
-	var i LockSeatForBookingRow
+func (q *Queries) LockBookingSeat(ctx context.Context, arg LockBookingSeatParams) (LockBookingSeatRow, error) {
+	row := q.db.QueryRow(ctx, lockBookingSeat, arg.BookingID, arg.SeatID)
+	var i LockBookingSeatRow
 	err := row.Scan(&i.TripID, &i.SeatID, &i.StopCount)
 	return i, err
 }
@@ -184,9 +213,7 @@ VALUES (
     $1, $2, $3,
     $4, $5, $6, $7
 )
-ON CONFLICT (booking_id) DO UPDATE SET
-    trip_id = EXCLUDED.trip_id,
-    seat_id = EXCLUDED.seat_id,
+ON CONFLICT (booking_id, seat_id) DO UPDATE SET
     from_stop = EXCLUDED.from_stop,
     to_stop = EXCLUDED.to_stop,
     status = EXCLUDED.status,

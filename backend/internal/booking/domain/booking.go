@@ -45,13 +45,14 @@ type Booking struct {
 	status     Status
 	expiresAt  time.Time
 	createdAt  time.Time
+	fareVND    int64
 }
 
-func NewHeldBooking(id, customerID, tripID string, createdAt, expiresAt time.Time) (Booking, error) {
+func NewHeldBooking(id, customerID, tripID string, createdAt, expiresAt time.Time, fareVND int64) (Booking, error) {
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(customerID) == "" || strings.TrimSpace(tripID) == "" {
 		return Booking{}, ErrInvalidBooking
 	}
-	if !expiresAt.After(createdAt) {
+	if !expiresAt.After(createdAt) || fareVND <= 0 {
 		return Booking{}, ErrInvalidBooking
 	}
 
@@ -62,20 +63,21 @@ func NewHeldBooking(id, customerID, tripID string, createdAt, expiresAt time.Tim
 		status:     StatusHeld,
 		createdAt:  createdAt,
 		expiresAt:  expiresAt,
+		fareVND:    fareVND,
 	}, nil
 }
 
 // RestoreBooking rebuilds an aggregate from persisted state after validating its invariants.
-func RestoreBooking(id, customerID, tripID string, status Status, createdAt, expiresAt time.Time) (Booking, error) {
+func RestoreBooking(id, customerID, tripID string, status Status, createdAt, expiresAt time.Time, fareVND int64) (Booking, error) {
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(customerID) == "" || strings.TrimSpace(tripID) == "" {
 		return Booking{}, ErrInvalidBooking
 	}
-	if status < StatusHeld || status > StatusExpired || !expiresAt.After(createdAt) {
+	if status < StatusHeld || status > StatusExpired || !expiresAt.After(createdAt) || fareVND < 0 {
 		return Booking{}, ErrInvalidBooking
 	}
 	return Booking{
 		id: id, customerID: customerID, tripID: tripID,
-		status: status, createdAt: createdAt, expiresAt: expiresAt,
+		status: status, createdAt: createdAt, expiresAt: expiresAt, fareVND: fareVND,
 	}, nil
 }
 
@@ -101,9 +103,12 @@ func (b *Booking) Expire(at time.Time) error {
 	return nil
 }
 
-func (b *Booking) Cancel() error {
-	if b.status != StatusHeld && b.status != StatusConfirmed {
+func (b *Booking) Cancel(at time.Time) error {
+	if b.status != StatusHeld {
 		return ErrInvalidTransition
+	}
+	if !at.Before(b.expiresAt) {
+		return ErrHoldExpired
 	}
 	b.status = StatusCancelled
 	return nil
@@ -115,3 +120,4 @@ func (b Booking) TripID() string       { return b.tripID }
 func (b Booking) Status() Status       { return b.status }
 func (b Booking) ExpiresAt() time.Time { return b.expiresAt }
 func (b Booking) CreatedAt() time.Time { return b.createdAt }
+func (b Booking) FareVND() int64       { return b.fareVND }

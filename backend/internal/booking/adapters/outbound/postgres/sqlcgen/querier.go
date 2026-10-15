@@ -11,8 +11,12 @@ import (
 type Querier interface {
 	ClaimOutbox(ctx context.Context, arg ClaimOutboxParams) ([]ClaimOutboxRow, error)
 	CreateBooking(ctx context.Context, arg CreateBookingParams) error
+	CreateBookingPassenger(ctx context.Context, arg CreateBookingPassengerParams) error
 	EnqueueOutbox(ctx context.Context, arg EnqueueOutboxParams) error
 	FindBookingForUpdate(ctx context.Context, id string) (Booking, error)
+	GetCustomerBooking(ctx context.Context, arg GetCustomerBookingParams) (GetCustomerBookingRow, error)
+	ListBookingSeats(ctx context.Context, bookingIds []string) ([]ListBookingSeatsRow, error)
+	ListCustomerBookings(ctx context.Context, arg ListCustomerBookingsParams) ([]ListCustomerBookingsRow, error)
 	ListExpiredBookingHolds(ctx context.Context, arg ListExpiredBookingHoldsParams) ([]string, error)
 	MarkOutboxFailed(ctx context.Context, arg MarkOutboxFailedParams) (int64, error)
 	MarkOutboxPublished(ctx context.Context, arg MarkOutboxPublishedParams) (int64, error)

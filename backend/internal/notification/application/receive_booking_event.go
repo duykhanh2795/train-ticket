@@ -38,7 +38,7 @@ func NewReceiveBookingEvent(inbox InboxRepository, consumer string) (*ReceiveBoo
 }
 
 func (u *ReceiveBookingEvent) Execute(ctx context.Context, event BookingEvent) (bool, error) {
-	status := map[string]string{"booking.held": "held", "booking.confirmed": "confirmed", "booking.expired": "expired"}[event.EventType]
+	status := map[string]string{"booking.held": "held", "booking.confirmed": "confirmed", "booking.expired": "expired", "booking.cancelled": "cancelled"}[event.EventType]
 	if status == "" || event.Status != status || event.EventID != event.BookingID+":"+event.EventType ||
 		strings.TrimSpace(event.BookingID) == "" || strings.TrimSpace(event.CustomerID) == "" ||
 		strings.TrimSpace(event.TripID) == "" || event.OccurredAt.IsZero() {

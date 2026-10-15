@@ -66,6 +66,7 @@ func (h *SearchTripsHandler) search(c *gin.Context) (transporthttp.Result, error
 			ToStop:      result.ToStop,
 			DepartureAt: result.DepartureAt,
 			ArrivalAt:   result.ArrivalAt,
+			FareFromVND: result.FareFromVND,
 		})
 	}
 	return transporthttp.Result{Status: http.StatusOK, Body: response}, nil

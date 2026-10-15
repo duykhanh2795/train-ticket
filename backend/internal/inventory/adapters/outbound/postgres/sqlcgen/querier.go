@@ -9,9 +9,10 @@ import (
 )
 
 type Querier interface {
+	ListBookingSeatIDs(ctx context.Context, bookingID string) ([]string, error)
 	ListSeatReservations(ctx context.Context, arg ListSeatReservationsParams) ([]ListSeatReservationsRow, error)
 	ListTripSeats(ctx context.Context, arg ListTripSeatsParams) ([]ListTripSeatsRow, error)
-	LockSeatForBooking(ctx context.Context, bookingID string) (LockSeatForBookingRow, error)
+	LockBookingSeat(ctx context.Context, arg LockBookingSeatParams) (LockBookingSeatRow, error)
 	LockTripSeat(ctx context.Context, arg LockTripSeatParams) (LockTripSeatRow, error)
 	UpsertSeatReservation(ctx context.Context, arg UpsertSeatReservationParams) error
 }

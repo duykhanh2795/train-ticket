@@ -14,10 +14,18 @@ type BookingRepository interface {
 	ListExpiredHolds(ctx context.Context, at time.Time, limit int) ([]string, error)
 }
 
+type BookingPassengerRepository interface {
+	Create(ctx context.Context, bookingID, seatID, fullName string) error
+}
+
 type SeatReservationService interface {
 	HoldSeat(ctx context.Context, request SeatHoldRequest) error
 	ConfirmSeat(ctx context.Context, bookingID string, at time.Time) error
 	ReleaseSeat(ctx context.Context, bookingID string) error
+}
+
+type FareQuote interface {
+	QuoteSeat(ctx context.Context, tripID, seatID string, fromStop, toStop int) (int64, error)
 }
 
 type SeatHoldRequest struct {

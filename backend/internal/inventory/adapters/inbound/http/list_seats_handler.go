@@ -50,6 +50,7 @@ func (h *ListSeatsHandler) list(c *gin.Context) (transporthttp.Result, error) {
 			"seat_number":  seat.SeatNumber,
 			"seat_type":    seat.SeatType,
 			"available":    seat.Available,
+			"fare_vnd":     seat.FareVND,
 		})
 	}
 	return transporthttp.Result{Status: http.StatusOK, Body: gin.H{"seats": response}}, nil

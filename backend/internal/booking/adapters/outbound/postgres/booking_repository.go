@@ -41,6 +41,7 @@ func (r *BookingRepository) Create(ctx context.Context, booking bookingdomain.Bo
 		Status:     booking.Status().String(),
 		CreatedAt:  pgtype.Timestamptz{Time: booking.CreatedAt(), Valid: true},
 		ExpiresAt:  pgtype.Timestamptz{Time: booking.ExpiresAt(), Valid: true},
+		FareVnd:    pgtype.Int8{Int64: booking.FareVND(), Valid: true},
 	})
 	if err == nil {
 		return nil
@@ -72,7 +73,7 @@ func (r *BookingRepository) FindForUpdate(ctx context.Context, bookingID string)
 		return bookingdomain.Booking{}, fmt.Errorf("booking %q: %w", bookingID, err)
 	}
 	booking, err := bookingdomain.RestoreBooking(
-		row.ID, row.CustomerID, row.TripID, status, row.CreatedAt.Time, row.ExpiresAt.Time,
+		row.ID, row.CustomerID, row.TripID, status, row.CreatedAt.Time, row.ExpiresAt.Time, row.FareVnd.Int64,
 	)
 	if err != nil {
 		return bookingdomain.Booking{}, fmt.Errorf("restore booking %q: %w", bookingID, err)

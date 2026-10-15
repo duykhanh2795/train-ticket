@@ -13,11 +13,11 @@ import (
 
 const createBooking = `-- name: CreateBooking :exec
 INSERT INTO bookings (
-    id, customer_id, trip_id, status, created_at, expires_at
+    id, customer_id, trip_id, status, created_at, expires_at, fare_vnd
 )
 VALUES (
     $1, $2, $3,
-    $4, $5, $6
+    $4, $5, $6, $7
 )
 `
 
@@ -28,6 +28,7 @@ type CreateBookingParams struct {
 	Status     string
 	CreatedAt  pgtype.Timestamptz
 	ExpiresAt  pgtype.Timestamptz
+	FareVnd    pgtype.Int8
 }
 
 func (q *Queries) CreateBooking(ctx context.Context, arg CreateBookingParams) error {
@@ -38,12 +39,29 @@ func (q *Queries) CreateBooking(ctx context.Context, arg CreateBookingParams) er
 		arg.Status,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.FareVnd,
 	)
 	return err
 }
 
+const createBookingPassenger = `-- name: CreateBookingPassenger :exec
+INSERT INTO booking_passengers (booking_id, seat_id, full_name)
+VALUES ($1, $2, $3)
+`
+
+type CreateBookingPassengerParams struct {
+	BookingID string
+	SeatID    string
+	FullName  string
+}
+
+func (q *Queries) CreateBookingPassenger(ctx context.Context, arg CreateBookingPassengerParams) error {
+	_, err := q.db.Exec(ctx, createBookingPassenger, arg.BookingID, arg.SeatID, arg.FullName)
+	return err
+}
+
 const findBookingForUpdate = `-- name: FindBookingForUpdate :one
-SELECT id, customer_id, trip_id, status, created_at, expires_at
+SELECT id, customer_id, trip_id, status, created_at, expires_at, fare_vnd
 FROM bookings
 WHERE id = $1
 FOR UPDATE
@@ -59,8 +77,244 @@ func (q *Queries) FindBookingForUpdate(ctx context.Context, id string) (Booking,
 		&i.Status,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.FareVnd,
 	)
 	return i, err
+}
+
+const getCustomerBooking = `-- name: GetCustomerBooking :one
+SELECT
+    bookings.id AS booking_id,
+    bookings.trip_id,
+    CASE
+        WHEN bookings.status = 'held' AND bookings.expires_at <= NOW() THEN 'expired'
+        ELSE bookings.status
+    END::text AS status,
+    bookings.created_at,
+    bookings.expires_at,
+    bookings.fare_vnd,
+    trips.train_number,
+    trips.service_date::text AS service_date,
+    trip_seats.coach_number,
+    trip_seats.seat_number,
+    trip_seats.seat_type,
+    reservations.from_stop,
+    reservations.to_stop,
+    origin.name AS origin_station,
+    destination.name AS destination_station
+FROM bookings
+JOIN train_trips AS trips ON trips.id = bookings.trip_id
+JOIN LATERAL (
+    SELECT booking_id, trip_id, seat_id, from_stop, to_stop, status, expires_at FROM seat_reservations
+    WHERE booking_id = bookings.id
+    ORDER BY seat_id LIMIT 1
+) AS reservations ON TRUE
+JOIN trip_seats ON trip_seats.trip_id = reservations.trip_id
+               AND trip_seats.seat_id = reservations.seat_id
+JOIN trip_stops AS origin_stop ON origin_stop.trip_id = bookings.trip_id
+                              AND origin_stop.stop_order = reservations.from_stop
+JOIN stations AS origin ON origin.id = origin_stop.station_id
+JOIN trip_stops AS destination_stop ON destination_stop.trip_id = bookings.trip_id
+                                   AND destination_stop.stop_order = reservations.to_stop
+JOIN stations AS destination ON destination.id = destination_stop.station_id
+WHERE bookings.id = $1
+  AND bookings.customer_id = $2
+`
+
+type GetCustomerBookingParams struct {
+	BookingID  string
+	CustomerID string
+}
+
+type GetCustomerBookingRow struct {
+	BookingID          string
+	TripID             string
+	Status             string
+	CreatedAt          pgtype.Timestamptz
+	ExpiresAt          pgtype.Timestamptz
+	FareVnd            pgtype.Int8
+	TrainNumber        string
+	ServiceDate        string
+	CoachNumber        string
+	SeatNumber         string
+	SeatType           string
+	FromStop           int16
+	ToStop             int16
+	OriginStation      string
+	DestinationStation string
+}
+
+func (q *Queries) GetCustomerBooking(ctx context.Context, arg GetCustomerBookingParams) (GetCustomerBookingRow, error) {
+	row := q.db.QueryRow(ctx, getCustomerBooking, arg.BookingID, arg.CustomerID)
+	var i GetCustomerBookingRow
+	err := row.Scan(
+		&i.BookingID,
+		&i.TripID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.FareVnd,
+		&i.TrainNumber,
+		&i.ServiceDate,
+		&i.CoachNumber,
+		&i.SeatNumber,
+		&i.SeatType,
+		&i.FromStop,
+		&i.ToStop,
+		&i.OriginStation,
+		&i.DestinationStation,
+	)
+	return i, err
+}
+
+const listBookingSeats = `-- name: ListBookingSeats :many
+SELECT reservations.booking_id, reservations.seat_id,
+       seats.coach_number, seats.seat_number, seats.seat_type,
+       COALESCE(passengers.full_name, '')::text AS full_name
+FROM seat_reservations AS reservations
+JOIN trip_seats AS seats ON seats.trip_id = reservations.trip_id
+                        AND seats.seat_id = reservations.seat_id
+LEFT JOIN booking_passengers AS passengers
+       ON passengers.booking_id = reservations.booking_id
+      AND passengers.seat_id = reservations.seat_id
+WHERE reservations.booking_id = ANY($1::text[])
+ORDER BY reservations.booking_id, reservations.seat_id
+`
+
+type ListBookingSeatsRow struct {
+	BookingID   string
+	SeatID      string
+	CoachNumber string
+	SeatNumber  string
+	SeatType    string
+	FullName    string
+}
+
+func (q *Queries) ListBookingSeats(ctx context.Context, bookingIds []string) ([]ListBookingSeatsRow, error) {
+	rows, err := q.db.Query(ctx, listBookingSeats, bookingIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBookingSeatsRow{}
+	for rows.Next() {
+		var i ListBookingSeatsRow
+		if err := rows.Scan(
+			&i.BookingID,
+			&i.SeatID,
+			&i.CoachNumber,
+			&i.SeatNumber,
+			&i.SeatType,
+			&i.FullName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCustomerBookings = `-- name: ListCustomerBookings :many
+SELECT
+    bookings.id AS booking_id,
+    bookings.trip_id,
+    CASE
+        WHEN bookings.status = 'held' AND bookings.expires_at <= NOW() THEN 'expired'
+        ELSE bookings.status
+    END::text AS status,
+    bookings.created_at,
+    bookings.expires_at,
+    bookings.fare_vnd,
+    trips.train_number,
+    trips.service_date::text AS service_date,
+    trip_seats.coach_number,
+    trip_seats.seat_number,
+    trip_seats.seat_type,
+    reservations.from_stop,
+    reservations.to_stop,
+    origin.name AS origin_station,
+    destination.name AS destination_station
+FROM bookings
+JOIN train_trips AS trips ON trips.id = bookings.trip_id
+JOIN LATERAL (
+    SELECT booking_id, trip_id, seat_id, from_stop, to_stop, status, expires_at FROM seat_reservations
+    WHERE booking_id = bookings.id
+    ORDER BY seat_id LIMIT 1
+) AS reservations ON TRUE
+JOIN trip_seats ON trip_seats.trip_id = reservations.trip_id
+               AND trip_seats.seat_id = reservations.seat_id
+JOIN trip_stops AS origin_stop ON origin_stop.trip_id = bookings.trip_id
+                              AND origin_stop.stop_order = reservations.from_stop
+JOIN stations AS origin ON origin.id = origin_stop.station_id
+JOIN trip_stops AS destination_stop ON destination_stop.trip_id = bookings.trip_id
+                                   AND destination_stop.stop_order = reservations.to_stop
+JOIN stations AS destination ON destination.id = destination_stop.station_id
+WHERE bookings.customer_id = $1
+ORDER BY bookings.created_at DESC, bookings.id DESC
+LIMIT $3::integer OFFSET $2::integer
+`
+
+type ListCustomerBookingsParams struct {
+	CustomerID string
+	PageOffset int32
+	PageSize   int32
+}
+
+type ListCustomerBookingsRow struct {
+	BookingID          string
+	TripID             string
+	Status             string
+	CreatedAt          pgtype.Timestamptz
+	ExpiresAt          pgtype.Timestamptz
+	FareVnd            pgtype.Int8
+	TrainNumber        string
+	ServiceDate        string
+	CoachNumber        string
+	SeatNumber         string
+	SeatType           string
+	FromStop           int16
+	ToStop             int16
+	OriginStation      string
+	DestinationStation string
+}
+
+func (q *Queries) ListCustomerBookings(ctx context.Context, arg ListCustomerBookingsParams) ([]ListCustomerBookingsRow, error) {
+	rows, err := q.db.Query(ctx, listCustomerBookings, arg.CustomerID, arg.PageOffset, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCustomerBookingsRow{}
+	for rows.Next() {
+		var i ListCustomerBookingsRow
+		if err := rows.Scan(
+			&i.BookingID,
+			&i.TripID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.FareVnd,
+			&i.TrainNumber,
+			&i.ServiceDate,
+			&i.CoachNumber,
+			&i.SeatNumber,
+			&i.SeatType,
+			&i.FromStop,
+			&i.ToStop,
+			&i.OriginStation,
+			&i.DestinationStation,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listExpiredBookingHolds = `-- name: ListExpiredBookingHolds :many

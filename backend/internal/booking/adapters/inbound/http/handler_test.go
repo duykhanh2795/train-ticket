@@ -31,12 +31,18 @@ func (s *holdStub) Execute(ctx context.Context, cmd bookingapp.HoldBookingComman
 		return bookingdomain.Booking{}, s.failure
 	}
 	now := time.Now()
-	return bookingdomain.NewHeldBooking("b", cmd.CustomerID, cmd.TripID, now, now.Add(time.Minute))
+	return bookingdomain.NewHeldBooking("b", cmd.CustomerID, cmd.TripID, now, now.Add(time.Minute), 100000)
 }
 
 type confirmStub struct{}
 
 func (confirmStub) Execute(context.Context, string, string) (bookingdomain.Booking, error) {
+	return bookingdomain.Booking{}, bookingapp.ErrBookingNotFound
+}
+
+type cancelStub struct{}
+
+func (cancelStub) Execute(context.Context, string, string) (bookingdomain.Booking, error) {
 	return bookingdomain.Booking{}, bookingapp.ErrBookingNotFound
 }
 
@@ -55,7 +61,7 @@ func TestHoldValidationAndWrappedConflict(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			hold := &holdStub{failure: tc.failure}
-			router := transporthttp.NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), NewHandler(hold, confirmStub{}, func(c *gin.Context) {
+			router := transporthttp.NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), NewHandler(hold, confirmStub{}, cancelStub{}, func(c *gin.Context) {
 				c.Request = c.Request.WithContext(transporthttp.WithUserID(c.Request.Context(), "c"))
 				c.Next()
 			}))

@@ -14,4 +14,5 @@ type TripSearchItem struct {
 	ToStop      int       `json:"to_stop"`
 	DepartureAt time.Time `json:"departure_at"`
 	ArrivalAt   time.Time `json:"arrival_at"`
+	FareFromVND *int64    `json:"fare_from_vnd"`
 }

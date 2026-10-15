@@ -9,18 +9,25 @@ import (
 	inventoryapp "example.com/train-ticket/internal/inventory/application"
 	platformclock "example.com/train-ticket/internal/platform/clock"
 	platformid "example.com/train-ticket/internal/platform/id"
+	pricingpostgres "example.com/train-ticket/internal/pricing/adapters/outbound/postgres"
+	pricingapp "example.com/train-ticket/internal/pricing/application"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type BookingModule struct {
 	HoldBooking    *bookingapp.HoldBooking
 	ConfirmBooking *bookingapp.ConfirmBooking
+	CancelBooking  *bookingapp.CancelBooking
 	ExpireHolds    *bookingapp.ExpireHolds
 }
 
 // NewBookingModule is the composition root for booking and inventory use cases.
 func NewBookingModule(cfg config.Config, pool *pgxpool.Pool) (BookingModule, error) {
 	bookingRepository, err := bookingpostgres.NewBookingRepository(pool)
+	if err != nil {
+		return BookingModule{}, err
+	}
+	passengerRepository, err := bookingpostgres.NewBookingPassengerRepository(pool)
 	if err != nil {
 		return BookingModule{}, err
 	}
@@ -41,11 +48,21 @@ func NewBookingModule(cfg config.Config, pool *pgxpool.Pool) (BookingModule, err
 		return BookingModule{}, err
 	}
 	reservations := inventory.NewSeatReservationService(inventoryService)
+	fareRepository, err := pricingpostgres.NewFareRepository(pool)
+	if err != nil {
+		return BookingModule{}, err
+	}
+	fareQuotes, err := pricingapp.NewQuote(fareRepository)
+	if err != nil {
+		return BookingModule{}, err
+	}
 	clock := platformclock.SystemClock{}
 
 	holdBooking, err := bookingapp.NewHoldBooking(
 		bookingRepository,
+		passengerRepository,
 		reservations,
+		fareQuotes,
 		outboxRepository,
 		unitOfWork,
 		platformid.UUIDGenerator{},
@@ -56,6 +73,10 @@ func NewBookingModule(cfg config.Config, pool *pgxpool.Pool) (BookingModule, err
 		return BookingModule{}, err
 	}
 	confirmBooking, err := bookingapp.NewConfirmBooking(bookingRepository, reservations, outboxRepository, unitOfWork, clock)
+	if err != nil {
+		return BookingModule{}, err
+	}
+	cancelBooking, err := bookingapp.NewCancelBooking(bookingRepository, reservations, outboxRepository, unitOfWork, clock)
 	if err != nil {
 		return BookingModule{}, err
 	}
@@ -70,6 +91,7 @@ func NewBookingModule(cfg config.Config, pool *pgxpool.Pool) (BookingModule, err
 	return BookingModule{
 		HoldBooking:    holdBooking,
 		ConfirmBooking: confirmBooking,
+		CancelBooking:  cancelBooking,
 		ExpireHolds:    expireHolds,
 	}, nil
 }
