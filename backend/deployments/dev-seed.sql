@@ -40,3 +40,20 @@ INSERT INTO trip_stops (trip_id, station_id, stop_order, arrival_at, departure_a
     ('DEMO-SE1', 'VINH', 2, ((CURRENT_DATE + 1) + TIME '14:00') AT TIME ZONE 'Asia/Ho_Chi_Minh', ((CURRENT_DATE + 1) + TIME '14:10') AT TIME ZONE 'Asia/Ho_Chi_Minh'),
     ('DEMO-SE1', 'DN',   3, ((CURRENT_DATE + 1) + TIME '21:00') AT TIME ZONE 'Asia/Ho_Chi_Minh', ((CURRENT_DATE + 1) + TIME '21:10') AT TIME ZONE 'Asia/Ho_Chi_Minh'),
     ('DEMO-SE1', 'SG',   4, ((CURRENT_DATE + 2) + TIME '05:00') AT TIME ZONE 'Asia/Ho_Chi_Minh', NULL);
+
+-- VND per adjacent segment. The selected service date belongs to DEMO-SE1;
+-- another trip/date can have different prices for the same route.
+INSERT INTO trip_segment_fares (trip_id, from_stop, seat_type, amount_vnd)
+SELECT 'DEMO-SE1', fares.from_stop, fares.seat_type, fares.amount_vnd
+FROM (VALUES
+    (0,  80000::BIGINT), (1, 150000::BIGINT),
+    (2, 350000::BIGINT), (3, 400000::BIGINT)
+) AS legs(from_stop, standard_vnd)
+CROSS JOIN LATERAL (VALUES
+    (legs.from_stop, 'standard', legs.standard_vnd),
+    (legs.from_stop, 'sleeper',  legs.standard_vnd * 16 / 10),
+    (legs.from_stop, 'vip',      legs.standard_vnd * 2)
+) AS fares(from_stop, seat_type, amount_vnd)
+WHERE true
+ON CONFLICT (trip_id, from_stop, seat_type) DO UPDATE
+SET amount_vnd = EXCLUDED.amount_vnd;
