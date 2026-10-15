@@ -52,22 +52,31 @@ function authErrorMessage(error: unknown) {
 
 export function AuthPage({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
-  const returnToBooking = useSearchParams().get("return") === "booking";
+  const returnTarget = useSearchParams().get("return");
+  const returnToBooking = returnTarget === "booking";
+  const returnToBookings = returnTarget === "bookings";
   const queryClient = useQueryClient();
   function signedIn(result: AuthResponse) {
     queryClient.setQueryData(["auth", "me"], result);
-    router.replace(returnToBooking ? "/#booking-flow" : "/");
+    router.replace(
+      returnToBooking ? "/#booking-flow" : returnToBookings ? "/bookings" : "/",
+    );
   }
-  const otherPage = `${mode === "login" ? "/register" : "/login"}${returnToBooking ? "?return=booking" : ""}`;
+  const returnSuffix = returnToBooking
+    ? "?return=booking"
+    : returnToBookings
+      ? "?return=bookings"
+      : "";
+  const otherPage = `${mode === "login" ? "/register" : "/login"}${returnSuffix}`;
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
       <div className="flex flex-col bg-background px-4 py-4 sm:px-8 lg:px-10">
         <Link
           href="/"
-          className="flex w-fit items-center gap-2 text-lg font-black tracking-tight text-foreground"
+          className="flex w-fit items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
         >
-          <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <TrainFront className="size-5" />
           </span>{" "}
           railway<span className="-ml-2 text-muted-foreground">.</span>
@@ -115,27 +124,27 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
           © Railway · Đồ án hệ thống đặt vé tàu đa chặng
         </p>
       </div>
-      <aside className="hidden min-h-screen flex-col justify-between bg-primary p-8 text-primary-foreground lg:flex">
-        <span className="text-xs font-medium tracking-widest text-primary-foreground/60">
+      <aside className="hidden min-h-screen flex-col justify-between border-l border-border bg-muted p-8 text-foreground lg:flex">
+        <span className="text-xs font-medium tracking-widest text-muted-foreground">
           HÀNH TRÌNH BẮT ĐẦU TỪ ĐÂY
         </span>
         <div className="max-w-lg">
-          <TrainFront className="mb-6 size-10 text-primary-foreground/70" />
+          <TrainFront className="mb-6 size-10 text-primary" />
           <h2 className="text-3xl font-semibold leading-tight tracking-tight">
             Đi xa hơn.
             <br />
-            <span className="text-primary-foreground/60">Dễ dàng hơn.</span>
+            <span className="text-muted-foreground">Dễ dàng hơn.</span>
           </h2>
-          <p className="mt-4 max-w-sm text-sm leading-6 text-primary-foreground/70">
+          <p className="mt-4 max-w-sm text-sm leading-6 text-muted-foreground">
             Tìm chuyến, chọn đúng ghế và giữ chỗ cho hành trình của bạn trong
             vài bước.
           </p>
         </div>
-        <div className="flex items-center gap-4 border-t border-primary-foreground/15 pt-6 text-xs text-primary-foreground/60">
+        <div className="flex items-center gap-4 border-t border-border pt-6 text-xs text-muted-foreground">
           <span>HÀ NỘI</span>
-          <span className="h-px flex-1 bg-primary-foreground/30" />
-          <TrainFront className="size-5 text-primary-foreground" />
-          <span className="h-px flex-1 bg-primary-foreground/30" />
+          <span className="h-px flex-1 bg-border" />
+          <TrainFront className="size-5 text-primary" />
+          <span className="h-px flex-1 bg-border" />
           <span>SÀI GÒN</span>
         </div>
       </aside>
