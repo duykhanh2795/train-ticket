@@ -4,4 +4,7 @@ VALUES ($1, $2) ON CONFLICT DO NOTHING;
 
 -- name: InsertNotificationJob :exec
 INSERT INTO notification_jobs (consumer_name, event_id, booking_id, customer_id, event_type, payload)
-VALUES ($1, $2, $3, $4, $5, $6);
+VALUES (
+    sqlc.arg(consumer_name), sqlc.arg(event_id), sqlc.arg(booking_id),
+    sqlc.arg(customer_id), sqlc.arg(event_type), sqlc.arg(payload)::text::jsonb
+);

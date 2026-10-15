@@ -80,7 +80,10 @@ func (q *Queries) ClaimOutbox(ctx context.Context, arg ClaimOutboxParams) ([]Cla
 
 const enqueueOutbox = `-- name: EnqueueOutbox :exec
 INSERT INTO outbox_messages (id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+VALUES (
+    $1, $2, $3,
+    $4, $5::text::jsonb, $6
+)
 `
 
 type EnqueueOutboxParams struct {
@@ -88,7 +91,7 @@ type EnqueueOutboxParams struct {
 	AggregateType string
 	AggregateID   string
 	EventType     string
-	Payload       []byte
+	Payload       string
 	OccurredAt    pgtype.Timestamptz
 }
 

@@ -1,6 +1,9 @@
 -- name: EnqueueOutbox :exec
 INSERT INTO outbox_messages (id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
-VALUES ($1, $2, $3, $4, $5, $6);
+VALUES (
+    sqlc.arg(id), sqlc.arg(aggregate_type), sqlc.arg(aggregate_id),
+    sqlc.arg(event_type), sqlc.arg(payload)::text::jsonb, sqlc.arg(occurred_at)
+);
 
 -- name: ClaimOutbox :many
 WITH candidates AS (

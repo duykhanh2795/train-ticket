@@ -29,7 +29,10 @@ func (q *Queries) InsertInbox(ctx context.Context, arg InsertInboxParams) (int64
 
 const insertNotificationJob = `-- name: InsertNotificationJob :exec
 INSERT INTO notification_jobs (consumer_name, event_id, booking_id, customer_id, event_type, payload)
-VALUES ($1, $2, $3, $4, $5, $6)
+VALUES (
+    $1, $2, $3,
+    $4, $5, $6::text::jsonb
+)
 `
 
 type InsertNotificationJobParams struct {
@@ -38,7 +41,7 @@ type InsertNotificationJobParams struct {
 	BookingID    string
 	CustomerID   string
 	EventType    string
-	Payload      []byte
+	Payload      string
 }
 
 func (q *Queries) InsertNotificationJob(ctx context.Context, arg InsertNotificationJobParams) error {

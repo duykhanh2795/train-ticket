@@ -31,7 +31,7 @@ func (r *OutboxRepository) Enqueue(ctx context.Context, m bookingapp.OutboxMessa
 	}
 	err := sqlcgen.New(platformpostgres.Executor(ctx, r.pool)).EnqueueOutbox(ctx, sqlcgen.EnqueueOutboxParams{
 		ID: m.ID, AggregateType: m.AggregateType, AggregateID: m.AggregateID,
-		EventType: m.EventType, Payload: m.Payload, OccurredAt: timestamp(m.OccurredAt),
+		EventType: m.EventType, Payload: string(m.Payload), OccurredAt: timestamp(m.OccurredAt),
 	})
 	if err != nil {
 		return fmt.Errorf("enqueue outbox %q: %w", m.ID, err)

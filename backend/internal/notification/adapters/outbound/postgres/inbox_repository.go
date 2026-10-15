@@ -47,7 +47,7 @@ func (r *InboxRepository) Accept(ctx context.Context, consumer string, event not
 	}
 	err = queries.InsertNotificationJob(ctx, sqlcgen.InsertNotificationJobParams{
 		ConsumerName: consumer, EventID: event.EventID, BookingID: event.BookingID,
-		CustomerID: event.CustomerID, EventType: event.EventType, Payload: payload,
+		CustomerID: event.CustomerID, EventType: event.EventType, Payload: string(payload),
 	})
 	if err != nil {
 		return false, fmt.Errorf("create notification job: %w", err)
