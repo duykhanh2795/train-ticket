@@ -45,3 +45,12 @@ management and fare calculation are future backend features.
 ```powershell
 npm run build
 ```
+
+## Container image
+
+The [Dockerfile](Dockerfile) uses `npm ci` and a Next.js standalone build, then
+runs the server as the unprivileged `node` user. Set `BACKEND_API_URL` when the
+container starts; the Compose configuration in
+[`../backend/deployments`](../backend/deployments/README.md) sets it to
+`http://api:8080` on the internal network. The Docker build context excludes
+local `.env` files.

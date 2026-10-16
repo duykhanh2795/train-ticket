@@ -10,6 +10,9 @@ See [development commands and worker metrics](docs/development.md) for the
 PowerShell helper, pinned code-generation tools, inbox deduplication, and
 consumer failure behavior.
 
+For container builds and local Kafka/Neon Compose commands, see
+[container deployment](deployments/README.md).
+
 ## Configuration
 
 Copy `config.example.yaml` to `config.yaml` and set the HTTP address and Neon
