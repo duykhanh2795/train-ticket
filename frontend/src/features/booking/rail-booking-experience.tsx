@@ -2,25 +2,9 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, format, intervalToDuration } from "date-fns";
-import { vi } from "date-fns/locale";
-import {
-  ArrowLeft,
-  ArrowRight,
-  ArrowUpRight,
-  CheckCircle2,
-  Clock3,
-  Compass,
-  Info,
-  MapPin,
-  RotateCcw,
-  Search,
-  ShieldCheck,
-  Ticket,
-  TrainFront,
-  UserRound,
-} from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { addDays, format } from "date-fns";
+import { ArrowLeft, ArrowLeftRight, ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -40,52 +24,66 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { currentUser, logout } from "@/features/auth/api";
-import { searchTrips } from "@/features/trip-search/api";
+import { currentUser } from "@/features/auth/api";
 import { STATIONS, stationName } from "@/features/trip-search/stations";
-import type { TripSearchItem } from "@/features/trip-search/types";
+import { tripSearchHref } from "@/features/trip-search/url";
 import { cn } from "@/lib/utils";
 import { apiErrorMessage } from "@/shared/api/client";
-import { confirmBooking, holdBooking, listSeats } from "./api";
+import { createCheckout, holdBooking, listSeats } from "./api";
+import { BookingReviewSheet } from "./booking-review-sheet";
+import { PassengerDetails } from "./passenger-details";
+import { SeatPreference, type SeatChoice, type SeatClass } from "./seat-preference";
+import { SeatPickerDialog } from "./seat-picker-dialog";
+import type { SeatItem } from "./types";
 import { useBookingStore } from "./store";
 
 const searchSchema = z
   .object({
     originId: z.string().min(1),
     destinationId: z.string().min(1),
-    serviceDate: z.string().min(1, "Chọn ngày đi"),
+    serviceDate: z.string().min(1, "Choose a departure date"),
   })
   .refine((value) => value.originId !== value.destinationId, {
-    message: "Ga đi và ga đến phải khác nhau",
+    message: "Departure and arrival stations must be different",
     path: ["destinationId"],
   });
 type SearchForm = z.infer<typeof searchSchema>;
+
+const sampleReviews = [
+  {
+    route: "Hanoi → Da Nang",
+    title: "Finding a train",
+    body: "The route and date search made it easy to compare available departures.",
+  },
+  {
+    route: "Hanoi → Vinh",
+    title: "Choosing a seat",
+    body: "I could see which seats were available for the part of the journey I was taking.",
+  },
+  {
+    route: "Da Nang → Saigon",
+    title: "Keeping track",
+    body: "The booking reference and payment status were easy to find afterwards.",
+  },
+] as const;
 
 function clock(value: string) {
   return format(new Date(value), "HH:mm");
 }
 
 function fareLabel(amount: number | null | undefined) {
-  return amount == null ? "Chưa có giá" : `${new Intl.NumberFormat("vi-VN").format(amount)} ₫`;
+  return amount == null
+    ? "Fare unavailable"
+    : `${new Intl.NumberFormat("en-US").format(amount)} ₫`;
 }
 
-function tripDuration(start: string, end: string) {
-  const duration = intervalToDuration({
-    start: new Date(start),
-    end: new Date(end),
-  });
-  return (
-    [
-      duration.days && `${duration.days} ngày`,
-      duration.hours && `${duration.hours} giờ`,
-      duration.minutes && `${duration.minutes} phút`,
-    ]
-      .filter(Boolean)
-      .join(" ") || "—"
-  );
-}
-
-export function RailBookingExperience() {
+export function RailBookingExperience({
+  bookingOnly = false,
+  initialPassengerCount = 1,
+}: {
+  bookingOnly?: boolean;
+  initialPassengerCount?: number;
+} = {}) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const {
@@ -93,16 +91,24 @@ export function RailBookingExperience() {
     trip,
     selectedSeats,
     booking,
-    setSearch,
-    chooseTrip,
-    chooseSeat,
+    setSelectedSeats,
     setBooking,
     reset,
   } = useBookingStore();
   const [now, setNow] = useState(0);
   const [minDate, setMinDate] = useState("");
-  const [passengerNames, setPassengerNames] = useState<Record<string, string>>({});
+  const [passengerNames, setPassengerNames] = useState<Record<string, string>>(
+    {},
+  );
   const [passengerError, setPassengerError] = useState("");
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [reviewSeats, setReviewSeats] = useState<SeatItem[]>([]);
+  const [reviewNames, setReviewNames] = useState<string[]>([]);
+  const [seatChoice, setSeatChoice] = useState<SeatChoice>("assign");
+  const [seatClass, setSeatClass] = useState<SeatClass>("any");
+  const [passengerCount, setPassengerCount] = useState(initialPassengerCount);
+  const [assignedNames, setAssignedNames] = useState<Record<number, string>>({});
   const searchForm = useForm<SearchForm>({
     resolver: zodResolver(searchSchema),
     defaultValues: {
@@ -123,20 +129,6 @@ export function RailBookingExperience() {
     queryFn: currentUser,
     retry: false,
   });
-  const logoutMutation = useMutation({
-    mutationFn: logout,
-    onSettled: () => {
-      queryClient.setQueryData(["auth", "me"], null);
-      reset();
-      setPassengerNames({});
-      setPassengerError("");
-    },
-  });
-  const tripsQuery = useQuery({
-    queryKey: ["trips", search],
-    queryFn: () => searchTrips(search!),
-    enabled: !!search,
-  });
   const seatsQuery = useQuery({
     queryKey: ["seats", trip?.trip_id, trip?.from_stop, trip?.to_stop],
     queryFn: () => listSeats(trip!.trip_id, trip!.from_stop, trip!.to_stop),
@@ -147,25 +139,28 @@ export function RailBookingExperience() {
     mutationFn: () =>
       holdBooking({
         trip_id: trip!.trip_id,
-        passengers: selectedSeats.map((item, index) => ({
+        passengers: reviewSeats.map((item, index) => ({
           seat_id: item.seat_id,
-          full_name: (passengerNames[item.seat_id] ??
-            (index === 0 ? authQuery.data?.user?.full_name : "") ?? "").trim(),
+          full_name: reviewNames[index],
         })),
         from_stop: trip!.from_stop,
         to_stop: trip!.to_stop,
       }),
     onSuccess: (result) => {
+      setReviewOpen(false);
       setNow(Date.now());
       setBooking(result);
       queryClient.invalidateQueries({ queryKey: ["seats", trip?.trip_id] });
+      router.push(`/checkout/${encodeURIComponent(result.booking_id)}`);
     },
     onError: () =>
       queryClient.invalidateQueries({ queryKey: ["seats", trip?.trip_id] }),
   });
-  const confirmMutation = useMutation({
-    mutationFn: confirmBooking,
-    onSuccess: setBooking,
+  const checkoutMutation = useMutation({
+    mutationFn: createCheckout,
+    onSuccess: (result) => {
+      window.location.assign(result.checkout_url);
+    },
   });
 
   useEffect(() => {
@@ -187,6 +182,14 @@ export function RailBookingExperience() {
     return () => window.clearInterval(timer);
   }, [booking]);
 
+  useEffect(() => {
+    if (!trip || window.location.hash !== "#booking-flow") return;
+    const frame = window.requestAnimationFrame(() =>
+      document.getElementById("booking-flow")?.scrollIntoView(),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [trip]);
+
   const secondsLeft =
     booking && now
       ? Math.max(
@@ -194,30 +197,41 @@ export function RailBookingExperience() {
           Math.ceil((new Date(booking.expires_at).getTime() - now) / 1000),
         )
       : 0;
-  const from = search ? stationName(search.originId) : "Hà Nội";
-  const to = search ? stationName(search.destinationId) : "Sài Gòn";
-  const selectedCurrentSeats = selectedSeats.map((selected) =>
+  const from = search ? stationName(search.originId) : "Hanoi";
+  const to = search ? stationName(search.destinationId) : "Saigon";
+  const autoSeats = [...(seatsQuery.data?.seats ?? [])]
+    .filter((seat) => seat.available && seat.fare_vnd != null && (seatClass === "any" || seat.seat_type === seatClass))
+    .sort((a, b) => (a.fare_vnd ?? 0) - (b.fare_vnd ?? 0) || a.coach_number.localeCompare(b.coach_number, undefined, { numeric: true }) || a.seat_number.localeCompare(b.seat_number, undefined, { numeric: true }))
+    .slice(0, passengerCount);
+  const bookingSeats = seatChoice === "assign" ? autoSeats : selectedSeats;
+  const selectedCurrentSeats = bookingSeats.map((selected) =>
     seatsQuery.data?.seats.find((item) => item.seat_id === selected.seat_id),
   );
+  function passengerName(seat: SeatItem, index: number) {
+    return (seatChoice === "assign" ? assignedNames[index] : passengerNames[seat.seat_id]) ??
+      (index === 0 ? authQuery.data?.user?.full_name : "") ?? "";
+  }
+  function updatePassengerName(seat: SeatItem, index: number, name: string) {
+    if (seatChoice === "assign") {
+      setAssignedNames((current) => ({ ...current, [index]: name }));
+    } else {
+      setPassengerNames((current) => ({ ...current, [seat.seat_id]: name }));
+    }
+    setPassengerError("");
+  }
   const seatsAvailable = selectedCurrentSeats.every(
     (item) => item?.available && item.fare_vnd != null,
-  );
-  const estimatedFare = selectedCurrentSeats.every((item) => item?.fare_vnd != null)
+  ) && (seatChoice !== "assign" || autoSeats.length === passengerCount);
+  const estimatedFare = selectedCurrentSeats.length > 0 && selectedCurrentSeats.every(
+    (item) => item?.fare_vnd != null,
+  )
     ? selectedCurrentSeats.reduce((sum, item) => sum + (item?.fare_vnd ?? 0), 0)
     : null;
-
   function submitSearch(values: SearchForm) {
     reset();
     setPassengerNames({});
     setPassengerError("");
-    setSearch(values);
-    window.setTimeout(
-      () =>
-        document
-          .getElementById("results")
-          ?.scrollIntoView({ behavior: "smooth" }),
-      80,
-    );
+    router.push(tripSearchHref(values));
   }
   function swapStations() {
     const origin = searchForm.getValues("originId");
@@ -227,453 +241,322 @@ export function RailBookingExperience() {
     searchForm.setValue("destinationId", origin, { shouldValidate: true });
     searchForm.clearErrors();
   }
-  function selectTrip(value: TripSearchItem) {
-    chooseTrip(value);
-    setPassengerNames({});
-    setPassengerError("");
-    holdMutation.reset();
-    confirmMutation.reset();
-    window.setTimeout(
-      () =>
-        document
-          .getElementById("booking-flow")
-          ?.scrollIntoView({ behavior: "smooth" }),
-      80,
-    );
+  function searchPopularRoute(originId: string, destinationId: string) {
+    const serviceDate =
+      searchForm.getValues("serviceDate") ||
+      format(addDays(new Date(), 1), "yyyy-MM-dd");
+    searchForm.setValue("originId", originId);
+    searchForm.setValue("destinationId", destinationId);
+    searchForm.setValue("serviceDate", serviceDate);
+    submitSearch({ originId, destinationId, serviceDate });
   }
   function startAgain() {
+    const resultsHref = search ? tripSearchHref(search, { passengers: passengerCount }) : "/trains";
     reset();
     setPassengerNames({});
     setPassengerError("");
     holdMutation.reset();
-    confirmMutation.reset();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    checkoutMutation.reset();
+    if (bookingOnly) router.push(resultsHref);
+    else window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  function holdSelectedSeat() {
+  function reviewSelectedSeats() {
     if (!authQuery.data?.user) {
-      router.push("/login?return=booking");
+      router.push(`/login?return=booking&pax=${passengerCount}`);
       return;
     }
-    if (selectedSeats.some((item, index) =>
-      (passengerNames[item.seat_id] ??
-        (index === 0 ? authQuery.data?.user?.full_name : "") ?? "").trim().length < 2
-    )) {
-      setPassengerError("Nhập họ tên cho từng hành khách (ít nhất 2 ký tự). ");
+    if (
+      bookingSeats.some(
+        (item, index) =>
+          passengerName(item, index).trim().length < 2,
+      )
+    ) {
+      setPassengerError(
+        "Enter a full name for each passenger (at least 2 characters).",
+      );
+      document.getElementById("passenger-details")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
       return;
     }
     setPassengerError("");
-    holdMutation.mutate();
+    holdMutation.reset();
+    setReviewSeats(selectedCurrentSeats.filter((seat): seat is SeatItem => seat != null));
+    setReviewNames(bookingSeats.map((seat, index) => passengerName(seat, index).trim()));
+    setReviewOpen(true);
   }
 
   return (
-    <div id="top" className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-5 md:px-8">
-          <a
-            href="#top"
-            className="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
-            aria-label="Railway về đầu trang"
-          >
-            <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <TrainFront className="size-5" />
-            </span>
-            railway<span className="-ml-2 text-muted-foreground">.</span>
-          </a>
-          <nav className="hidden items-center gap-8 text-sm font-medium text-muted-foreground md:flex">
-            <a className="hover:text-foreground" href="#search">
-              Tìm chuyến
-            </a>
-            <a className="hover:text-foreground" href="#how-it-works">
-              Cách hoạt động
-            </a>
-            <a className="hover:text-foreground" href="#about">
-              Về dự án
-            </a>
-          </nav>
-          <div className="flex items-center gap-2 md:gap-4">
-            {authQuery.data?.user ? (
-              <div className="flex items-center gap-2">
-                <span className="hidden max-w-30 truncate text-xs font-semibold text-foreground sm:block">
-                  {authQuery.data.user.full_name}
-                </span>
-                <Link
-                  href="/bookings"
-                  className={buttonVariants({ variant: "ghost" })}
-                  aria-label="Đặt chỗ của tôi"
-                >
-                  <Ticket className="size-4" />
-                  <span className="hidden sm:inline">Đặt chỗ</span>
-                </Link>
-                <Button
-                  variant="ghost"
-                  onClick={() => logoutMutation.mutate()}
-                  disabled={logoutMutation.isPending}
-                >
-                  Đăng xuất
-                </Button>
-              </div>
-            ) : (
-              <Link
-                href="/login"
-                className={buttonVariants({ variant: "ghost" })}
-              >
-                Đăng nhập
-              </Link>
-            )}
-            <a
-              href="#search"
-              className={cn(buttonVariants(), "hidden sm:inline-flex")}
-            >
-              Đặt vé <ArrowUpRight className="size-4" />
-            </a>
+    <div
+      id="top"
+      className={cn("railway-landing relative min-h-screen bg-background text-foreground", bookingOnly && "booking-flow-only")}
+    >
+      {bookingOnly && (
+        <>
+          <style>{`.booking-flow-only > header, .booking-flow-only > footer, .booking-flow-only > main > section:not(#booking-flow):not(.booking-empty) { display: none; }`}</style>
+          <div className="mx-auto max-w-6xl px-5 pt-7 md:px-8">
+            <Link href={search ? tripSearchHref(search, { passengers: passengerCount }) : "/trains"} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+              <ArrowLeft className="size-4" /> Back to trains
+            </Link>
           </div>
-        </div>
-      </header>
-
+        </>
+      )}
       <main>
-        <section className="border-b border-border bg-background">
-          <div className="mx-auto grid max-w-7xl items-center gap-8 px-5 py-10 md:grid-cols-2 md:px-8 md:py-12">
-            <div>
-              <Badge
-                variant="outline"
-                className="border-border text-foreground"
-              >
-                HÀNH TRÌNH BẮT ĐẦU TỪ ĐÂY
-              </Badge>
-              <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
-                Đi xa hơn.
-                <br />
-                <span className="text-muted-foreground">Dễ dàng hơn.</span>
-              </h1>
-              <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">
-                Tìm chuyến tàu phù hợp, chọn đúng chỗ ngồi và giữ vé trong vài
-                bước. Mọi hành trình đáng nhớ đều bắt đầu thật đơn giản.
-              </p>
-              <div className="mt-5 flex flex-wrap items-center gap-4 text-xs font-medium text-muted-foreground">
-                <span className="flex items-center gap-2">
-                  <ShieldCheck className="size-4" /> Chọn ghế theo từng chặng
-                </span>
-                <span className="flex items-center gap-2">
-                  <Clock3 className="size-4" /> Giữ chỗ tức thì
-                </span>
-              </div>
-            </div>
-            <div className="mx-auto w-full max-w-lg">
-              <Card className="bg-card shadow-none">
-                <CardHeader className="border-b border-dashed border-border">
-                  <div className="flex items-center justify-between">
-                    <Badge
-                      variant="secondary"
-                      className="bg-muted text-foreground"
-                    >
-                      HÀNH TRÌNH MẪU
-                    </Badge>
-                    <TrainFront className="size-6 text-foreground" />
-                  </div>
-                  <CardTitle className="mt-2">
-                    Khám phá Việt Nam trên từng cung đường
-                  </CardTitle>
+        {bookingOnly && !trip && (
+          <section className="booking-empty mx-auto max-w-6xl px-5 py-20 md:px-8">
+            <h1 className="text-2xl font-semibold">Choose a train first</h1>
+            <p className="mt-2 text-muted-foreground">Search for an available train before selecting seats.</p>
+            <Link href="/trains" className={cn(buttonVariants(), "mt-6")}>Find trains</Link>
+          </section>
+        )}
+        <section id="search" className="relative overflow-hidden bg-background">
+          <div className="mx-auto grid min-h-[640px] max-w-7xl items-center gap-12 px-5 py-20 md:px-8 lg:grid-cols-[minmax(0,1fr)_460px] lg:gap-20 lg:py-28">
+            <div className="order-2 lg:order-2">
+              <Card className="gap-0 overflow-hidden rounded-xl border border-foreground/15 bg-card py-0 shadow-[0_20px_70px_-45px_rgba(0,0,0,0.35)]">
+                <CardHeader className="flex flex-row items-center justify-between border-b px-5 py-4">
+                  <CardTitle className="text-base">Find a train</CardTitle>
+                  <span className="rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground">
+                    One way
+                  </span>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground">GA ĐI</p>
-                      <p className="mt-1 text-sm font-semibold">Hà Nội</p>
+                <CardContent className="p-5 sm:p-6">
+                  <form
+                    onSubmit={searchForm.handleSubmit(submitSearch)}
+                    className="space-y-4"
+                  >
+                    <div className="relative rounded-lg border bg-muted/50 px-4 py-2">
+                      <div className="border-b pb-2">
+                        <Label
+                          htmlFor="origin"
+                          className="text-xs text-muted-foreground"
+                        >
+                          From
+                        </Label>
+                        <Select
+                          value={originId}
+                          onValueChange={(value) =>
+                            searchForm.setValue("originId", String(value), {
+                              shouldValidate: true,
+                            })
+                          }
+                        >
+                          <SelectTrigger
+                            id="origin"
+                            className="h-10 w-full border-0 bg-transparent px-0 text-base font-semibold shadow-none focus-visible:ring-0"
+                          >
+                            <SelectValue>{stationName(originId)}</SelectValue>
+                          </SelectTrigger>
+                          <SelectContent className="railway-landing">
+                            {STATIONS.map((station) => (
+                              <SelectItem key={station.id} value={station.id}>
+                                {station.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="pt-2">
+                        <Label
+                          htmlFor="destination"
+                          className="text-xs text-muted-foreground"
+                        >
+                          To
+                        </Label>
+                        <Select
+                          value={destinationId}
+                          onValueChange={(value) =>
+                            searchForm.setValue(
+                              "destinationId",
+                              String(value),
+                              { shouldValidate: true },
+                            )
+                          }
+                        >
+                          <SelectTrigger
+                            id="destination"
+                            className="h-10 w-full border-0 bg-transparent px-0 text-base font-semibold shadow-none focus-visible:ring-0"
+                          >
+                            <SelectValue>
+                              {stationName(destinationId)}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent className="railway-landing">
+                            {STATIONS.map((station) => (
+                              <SelectItem key={station.id} value={station.id}>
+                                {station.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="Swap departure and arrival stations"
+                        onClick={swapStations}
+                        className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-card shadow-none hover:bg-accent"
+                      >
+                        <ArrowLeftRight className="size-4" />
+                      </Button>
                     </div>
-                    <div className="flex items-center gap-1 text-foreground">
-                      <span className="h-px w-5 bg-current" />
-                      <TrainFront className="size-5" />
-                      <span className="h-px w-5 bg-current" />
+                    <div className="rounded-lg border bg-muted/50 px-4 py-3">
+                      <Label
+                        htmlFor="departure-date"
+                        className="text-xs text-muted-foreground"
+                      >
+                        Departure date
+                      </Label>
+                      <Input
+                        id="departure-date"
+                        type="date"
+                        min={minDate}
+                        className="mt-1 h-10 border-0 bg-transparent px-0 text-base font-semibold shadow-none focus-visible:ring-0"
+                        {...searchForm.register("serviceDate")}
+                      />
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">GA ĐẾN</p>
-                      <p className="mt-1 text-sm font-semibold">Sài Gòn</p>
-                    </div>
-                  </div>
-                  <Separator className="my-4" />
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>ĐƯỜNG SẮT VIỆT NAM</span>
-                    <span>01 / 05</span>
-                  </div>
+                    {(searchForm.formState.errors.destinationId ||
+                      searchForm.formState.errors.serviceDate) && (
+                      <p className="text-sm text-destructive">
+                        {searchForm.formState.errors.destinationId?.message ||
+                          searchForm.formState.errors.serviceDate?.message}
+                      </p>
+                    )}
+                    <Button
+                      type="submit"
+                      className="h-11 w-full text-sm font-semibold"
+                    >
+                      Search trains
+                    </Button>
+                    <p className="text-center text-xs text-muted-foreground">
+                      Seat availability is checked for your exact route.
+                    </p>
+                  </form>
                 </CardContent>
               </Card>
             </div>
+            <div className="order-1 max-w-2xl lg:order-1">
+              <p className="inline-flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                <span className="h-px w-8 bg-foreground" /> Rail travel in
+                Vietnam
+              </p>
+              <h1 className="mt-6 text-5xl font-semibold leading-[1.05] tracking-[-0.055em] sm:text-6xl xl:text-7xl">
+                Find your train.
+                <br />
+                <span className="text-muted-foreground">Choose your seat.</span>
+              </h1>
+              <p className="mt-7 max-w-lg text-base leading-7 text-muted-foreground">
+                Search by route and date, see seats available on your segment,
+                and keep your booking details in one place.
+              </p>
+            </div>
           </div>
         </section>
-
-        <section
-          id="search"
-          className="mx-auto max-w-7xl scroll-mt-24 px-5 py-10 md:px-8"
-        >
-          <Card className="bg-card shadow-none">
-            <CardHeader className="sm:flex sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-bold tracking-widest text-foreground">
-                  LÊN KẾ HOẠCH CHUYẾN ĐI
-                </p>
-                <CardTitle className="mt-1">Tìm chuyến tàu của bạn</CardTitle>
-              </div>
-              <Badge variant="secondary" className="w-fit gap-1">
-                <Ticket className="size-4" /> Vé một chiều
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={searchForm.handleSubmit(submitSearch)}>
-                <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr_1fr_auto] md:items-end">
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="origin"
-                      className="text-xs font-bold text-muted-foreground"
-                    >
-                      GA ĐI
-                    </Label>
-                    <Select
-                      value={originId}
-                      onValueChange={(value) =>
-                        searchForm.setValue("originId", String(value), {
-                          shouldValidate: true,
-                        })
-                      }
-                    >
-                      <SelectTrigger id="origin" className="w-full">
-                        <MapPin className="size-4 text-foreground" />
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STATIONS.map((station) => (
-                          <SelectItem key={station.id} value={station.id}>
-                            {station.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    aria-label="Đổi ga đi và ga đến"
-                    onClick={swapStations}
-                    className="justify-self-center"
-                  >
-                    <RotateCcw className="size-4" />
-                  </Button>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="destination"
-                      className="text-xs font-bold text-muted-foreground"
-                    >
-                      GA ĐẾN
-                    </Label>
-                    <Select
-                      value={destinationId}
-                      onValueChange={(value) =>
-                        searchForm.setValue("destinationId", String(value), {
-                          shouldValidate: true,
-                        })
-                      }
-                    >
-                      <SelectTrigger id="destination" className="w-full">
-                        <MapPin className="size-4 text-foreground" />
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STATIONS.map((station) => (
-                          <SelectItem key={station.id} value={station.id}>
-                            {station.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="departure-date"
-                      className="text-xs font-bold text-muted-foreground"
-                    >
-                      NGÀY KHỞI HÀNH
-                    </Label>
-                    <Input
-                      id="departure-date"
-                      type="date"
-                      min={minDate}
-                      {...searchForm.register("serviceDate")}
-                    />
-                  </div>
-                  <Button type="submit">
-                    <Search className="size-4" /> Tìm chuyến
-                  </Button>
-                </div>
-                {(searchForm.formState.errors.destinationId ||
-                  searchForm.formState.errors.serviceDate) && (
-                  <p className="mt-3 text-sm text-destructive">
-                    {searchForm.formState.errors.destinationId?.message ||
-                      searchForm.formState.errors.serviceDate?.message}
-                  </p>
-                )}
-              </form>
-            </CardContent>
-          </Card>
-          <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-            <Info className="size-4 shrink-0" /> Dữ liệu nhà ga hiện theo bộ
-            mẫu. Chuyến đi sẽ xuất hiện sau khi bạn nạp dữ liệu mẫu vào backend.
-          </p>
-        </section>
-
-        <section
-          id="results"
-          className="mx-auto max-w-7xl scroll-mt-24 space-y-4 px-5 py-10 md:px-8"
-        >
-          {search ? (
-            <>
-              <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold tracking-widest text-foreground">
-                    KẾT QUẢ TÌM KIẾM
-                  </p>
-                  <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                    {from} <span className="text-foreground">→</span> {to}
-                  </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {format(
-                      new Date(`${search.serviceDate}T12:00:00`),
-                      "EEEE, dd/MM/yyyy",
-                      { locale: vi },
-                    )}
-                  </p>
-                </div>
-                <Badge variant="outline">
-                  {tripsQuery.data?.trips.length ?? 0} chuyến tàu
-                </Badge>
-              </div>
-              {tripsQuery.isPending && (
-                <Card>
-                  <CardContent className="flex items-center gap-4">
-                    <Skeleton className="size-11 rounded-full" />
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-45" />
-                      <Skeleton className="h-3 w-28" />
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              {tripsQuery.isError && (
-                <Alert variant="destructive">
-                  <Info />
-                  <AlertTitle>Chưa thể tải chuyến tàu</AlertTitle>
-                  <AlertDescription>
-                    {apiErrorMessage(tripsQuery.error)}{" "}
-                    <Button
-                      variant="outline"
-                      onClick={() => tripsQuery.refetch()}
-                    >
-                      Thử lại
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              )}
-              {tripsQuery.isSuccess && tripsQuery.data.trips.length === 0 && (
-                <Alert>
-                  <TrainFront />
-                  <AlertTitle>Chưa có chuyến tàu cho ngày này</AlertTitle>
-                  <AlertDescription>
-                    Hãy thử ngày khác hoặc nạp dữ liệu mẫu trong backend.
-                  </AlertDescription>
-                </Alert>
-              )}
-              {tripsQuery.data?.trips.map((item) => (
-                <TripCard
-                  key={item.trip_id}
-                  trip={item}
-                  from={from}
-                  to={to}
-                  selected={trip?.trip_id === item.trip_id}
-                  onSelect={() => selectTrip(item)}
-                />
-              ))}
-            </>
-          ) : (
-            <Card className="border-dashed bg-card/70">
-              <CardContent className="flex items-center gap-4">
-                <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
-                  <Compass className="size-6" />
-                </span>
-                <div>
-                  <h2 className="font-semibold">Sẵn sàng lên đường?</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Chọn ga đi, ga đến và ngày khởi hành ở phía trên để xem các
-                    chuyến tàu.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+        <section className="border-y bg-muted/40">
+          <div className="mx-auto grid max-w-7xl gap-x-8 gap-y-10 px-5 py-14 sm:grid-cols-2 md:px-8 lg:grid-cols-4 lg:py-18">
+            <div className="border-l border-foreground/20 pl-5">
+              <span className="text-xs font-mono text-muted-foreground">
+                01 / SEARCH
+              </span>
+              <h2 className="mt-8 text-sm font-semibold">Search by route</h2>
+              <p className="mt-2 max-w-60 text-sm leading-6 text-muted-foreground">
+                Choose your stations and departure date.
+              </p>
+            </div>
+            <div className="border-l border-foreground/20 pl-5">
+              <span className="text-xs font-mono text-muted-foreground">
+                02 / SEATS
+              </span>
+              <h2 className="mt-8 text-sm font-semibold">
+                Seats for your segment
+              </h2>
+              <p className="mt-2 max-w-60 text-sm leading-6 text-muted-foreground">
+                Check availability for the exact part of your journey.
+              </p>
+            </div>
+            <div className="border-l border-foreground/20 pl-5">
+              <span className="text-xs font-mono text-muted-foreground">
+                03 / HOLD
+              </span>
+              <h2 className="mt-8 text-sm font-semibold">A 10-minute hold</h2>
+              <p className="mt-2 max-w-60 text-sm leading-6 text-muted-foreground">
+                Finish passenger details and payment after holding a seat.
+              </p>
+            </div>
+            <div className="border-l border-foreground/20 pl-5">
+              <span className="text-xs font-mono text-muted-foreground">
+                04 / PAYMENT
+              </span>
+              <h2 className="mt-8 text-sm font-semibold">Pay with VNPAY</h2>
+              <p className="mt-2 max-w-60 text-sm leading-6 text-muted-foreground">
+                Your booking is confirmed after successful payment.
+              </p>
+            </div>
+          </div>
         </section>
 
         {trip && (
           <section
             id="booking-flow"
-            className="mx-auto max-w-7xl scroll-mt-24 px-5 py-10 md:px-8"
+            className="mx-auto max-w-6xl scroll-mt-24 px-5 py-10 md:px-8"
           >
             <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-xs font-bold tracking-widest text-foreground">
-                  BƯỚC TIẾP THEO
+                  NEXT STEP
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
                   {booking?.status === "confirmed"
-                    ? "Vé đã được xác nhận"
+                    ? "Booking confirmed"
                     : booking
-                      ? "Chỗ ngồi của bạn"
-                      : "Chọn chỗ ngồi"}
+                      ? "Your seats"
+                      : "Choose your seats"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Tàu {trip.train_number} · {from} → {to}
+                  Train {trip.train_number} · {from} → {to}
                 </p>
               </div>
               <Button variant="ghost" onClick={startAgain}>
-                <ArrowLeft className="size-4" /> Tìm chuyến khác
+                <ArrowLeft className="size-4" /> Search again
               </Button>
             </div>
             {booking ? (
               <Card className="bg-card">
                 <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex gap-4">
-                    <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                      <CheckCircle2 className="size-6" />
-                    </span>
                     <div>
                       <Badge
                         variant="outline"
                         className="border-border text-foreground"
                       >
                         {booking.status === "confirmed"
-                          ? "ĐẶT CHỖ HOÀN TẤT"
-                          : "ĐANG GIỮ CHỖ"}
+                          ? "CONFIRMED"
+                          : "SEATS HELD"}
                       </Badge>
                       <h3 className="mt-2 text-base font-semibold text-foreground">
                         {booking.status === "confirmed"
-                          ? "Hành trình đã sẵn sàng!"
-                          : "Các ghế đã được giữ cho bạn"}
+                          ? "Your journey is booked"
+                          : "Your seats are on hold"}
                       </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Mã đặt chỗ <strong>{booking.booking_id}</strong>
+                        Booking reference <strong>{booking.booking_id}</strong>
                       </p>
                       <Link
                         href={`/bookings/${encodeURIComponent(booking.booking_id)}`}
                         className="mt-2 inline-flex items-center gap-1 text-sm font-medium underline underline-offset-4"
                       >
-                        Xem chi tiết đặt chỗ <ArrowRight className="size-3" />
+                        View booking details
                       </Link>
                       <p className="mt-3 text-sm text-muted-foreground">
-                        Tàu {trip.train_number} · {selectedSeats.length} ghế
+                        Train {trip.train_number} · {bookingSeats.length} seats
                       </p>
                       <p className="mt-1 text-sm font-medium">
-                        Giá đã chốt: {fareLabel(booking.fare_vnd)}
+                        Final fare: {fareLabel(booking.fare_vnd)}
                       </p>
                       {booking.status === "held" && (
                         <p className="mt-2 text-sm font-semibold text-foreground">
-                          Thời gian còn lại:{" "}
+                          Time remaining:{" "}
                           {String(Math.floor(secondsLeft / 60)).padStart(
                             2,
                             "0",
@@ -687,23 +570,23 @@ export function RailBookingExperience() {
                     <div className="flex flex-col gap-2">
                       <Button
                         disabled={
-                          secondsLeft === 0 || confirmMutation.isPending
+                          secondsLeft === 0 || checkoutMutation.isPending
                         }
                         onClick={() =>
-                          confirmMutation.mutate(booking.booking_id)
+                          checkoutMutation.mutate(booking.booking_id)
                         }
                       >
-                        {confirmMutation.isPending
-                          ? "Đang xác nhận..."
-                          : "Xác nhận đặt chỗ demo"}{" "}
-                        <ArrowRight className="size-4" />
+                        {checkoutMutation.isPending
+                          ? "Opening VNPAY..."
+                          : "Pay with VNPAY"}
                       </Button>
                       <span className="text-xs text-muted-foreground">
-                        Chức năng demo, chưa kết nối thanh toán
+                        Your booking is confirmed only after VNPAY reports a
+                        successful payment.
                       </span>
-                      {confirmMutation.isError && (
+                      {checkoutMutation.isError && (
                         <p className="text-sm text-destructive">
-                          {apiErrorMessage(confirmMutation.error)}
+                          {apiErrorMessage(checkoutMutation.error)}
                         </p>
                       )}
                     </div>
@@ -711,127 +594,91 @@ export function RailBookingExperience() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <Card className="bg-card">
-                  <CardHeader className="gap-2">
-                    <Badge variant="secondary" className="w-fit gap-1">
-                      <TrainFront className="size-3" /> SƠ ĐỒ CHỖ NGỒI
-                    </Badge>
-                    <CardTitle>Chọn ghế cho hành khách</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      Chọn tối đa 6 ghế. Ghế chỉ được giữ sau khi bạn xác nhận.
-                    </p>
-                    <div className="flex flex-wrap gap-4 pt-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <i className="size-3 rounded bg-background ring-1 ring-border" />{" "}
-                        Còn trống
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <i className="size-3 rounded bg-muted ring-1 ring-border" />{" "}
-                        Đã giữ
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <i className="size-3 rounded bg-primary" /> Đang chọn
-                      </span>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {seatsQuery.isPending && (
-                      <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-                        {Array.from({ length: 16 }, (_, index) => (
-                          <Skeleton key={index} className="h-8 rounded-lg" />
-                        ))}
-                      </div>
-                    )}
-                    {seatsQuery.isError && (
-                      <Alert variant="destructive">
-                        <Info />
-                        <AlertTitle>Không tải được sơ đồ ghế</AlertTitle>
-                        <AlertDescription>
-                          {apiErrorMessage(seatsQuery.error)}{" "}
-                          <Button
-                            variant="outline"
-                            onClick={() => seatsQuery.refetch()}
-                          >
-                            Thử lại
-                          </Button>
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                    {seatsQuery.data &&
-                      (seatsQuery.data.seats.length ? (
-                        <div className="space-y-6">
-                          {Array.from(
-                            new Set(
-                              seatsQuery.data.seats.map(
-                                (item) => item.coach_number,
-                              ),
-                            ),
-                          ).map((coach) => (
-                            <div
-                              key={coach}
-                              className="rounded-xl border border-border p-4"
-                            >
-                              <div className="mb-4 flex items-center justify-between gap-2">
-                                <span className="text-sm font-bold text-foreground">
-                                  TOA {coach}
-                                </span>
-                                <Badge variant="outline">
-                                  {
-                                    seatsQuery.data.seats.filter(
-                                      (item) =>
-                                        item.coach_number === coach &&
-                                        item.available,
-                                    ).length
-                                  }{" "}
-                                  ghế trống
-                                </Badge>
-                              </div>
-                              <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 xl:grid-cols-8">
-                                {seatsQuery.data.seats
-                                  .filter((item) => item.coach_number === coach)
-                                  .map((item) => (
-                                    <Button
-                                      key={item.seat_id}
-                                      type="button"
-                                      variant="outline"
-                                      disabled={
-                                        (!item.available || selectedSeats.length >= 6) &&
-                                        !selectedSeats.some((selected) => selected.seat_id === item.seat_id)
-                                      }
-                                      aria-pressed={selectedSeats.some((selected) => selected.seat_id === item.seat_id)}
-                                      title={`${item.seat_type} · Ghế ${item.seat_number} · ${fareLabel(item.fare_vnd)}`}
-                                      className={cn(
-                                        "font-semibold",
-                                        !item.available &&
-                                          "bg-muted text-muted-foreground",
-                                        selectedSeats.some((selected) => selected.seat_id === item.seat_id)
-                                          ? "border-primary bg-accent text-accent-foreground hover:bg-accent/80 hover:text-accent-foreground"
-                                          : "border-border bg-background text-foreground hover:bg-muted",
-                                      )}
-                                      onClick={() => chooseSeat(item)}
-                                    >
-                                      {item.seat_number}
-                                    </Button>
-                                  ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="py-8 text-center text-sm text-muted-foreground">
-                          Chuyến tàu này chưa có sơ đồ ghế.
-                        </p>
-                      ))}
-                  </CardContent>
-                </Card>
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+                <div className="space-y-5">
+                <SeatPreference
+                  choice={seatChoice}
+                  onChoiceChange={(choice) => { setSeatChoice(choice); setPassengerError(""); setReviewOpen(false); }}
+                  onSelectSeat={() => {
+                    if (seatsQuery.data?.seats.length) setPickerOpen(true);
+                  }}
+                  count={passengerCount}
+                  onCountChange={(count) => { setPassengerCount(count); setPassengerError(""); setReviewOpen(false); }}
+                  seatClass={seatClass}
+                  onSeatClassChange={(value) => { setSeatClass(value); setPassengerError(""); setReviewOpen(false); }}
+                />
+                {seatChoice === "assign" && seatsQuery.isPending && (
+                  <Skeleton className="h-24 rounded-xl" />
+                )}
+                {pickerOpen && (
+                  <SeatPickerDialog
+                    seats={seatsQuery.data?.seats ?? []}
+                    selectedSeats={selectedSeats}
+                    from={from}
+                    to={to}
+                    trip={trip}
+                    trainNumber={trip.train_number}
+                    serviceDate={trip.service_date}
+                    maxSeats={6}
+                    onClose={() => setPickerOpen(false)}
+                    onConfirm={(seats) => {
+                      setSelectedSeats(seats);
+                      setPickerOpen(false);
+                    }}
+                  />
+                )}
+                {seatChoice === "assign" && seatsQuery.isError && (
+                  <Alert variant="destructive">
+                    <AlertTitle>Could not load available seats</AlertTitle>
+                    <AlertDescription>
+                      {apiErrorMessage(seatsQuery.error)}{" "}
+                      <Button variant="outline" size="sm" onClick={() => seatsQuery.refetch()}>
+                        Try again
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {seatChoice === "assign" && seatsQuery.data && autoSeats.length < passengerCount && (
+                  <Alert>
+                    <AlertTitle>Not enough seats available</AlertTitle>
+                    <AlertDescription>Choose fewer passengers, another class, or select seats yourself.</AlertDescription>
+                  </Alert>
+                )}
+                {seatChoice === "select" && (
+                  <Card className="bg-card">
+                    <CardHeader>
+                      <CardTitle>Choose exact seats</CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        Browse coaches and choose up to six seats before placing a hold.
+                      </p>
+                    </CardHeader>
+                    <CardContent>
+                      {seatsQuery.isError && (
+                        <p className="mb-3 text-sm text-destructive">{apiErrorMessage(seatsQuery.error)}</p>
+                      )}
+                      <Button variant="outline" onClick={() => setPickerOpen(true)} disabled={!seatsQuery.data?.seats.length}>
+                        Open seat map
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+                {bookingSeats.length > 0 && (
+                  <PassengerDetails
+                    seats={bookingSeats}
+                    names={bookingSeats.map(passengerName)}
+                    onNameChange={updatePassengerName}
+                    error={passengerError}
+                  />
+                )}
+                </div>
                 <Card className="h-fit bg-card lg:sticky lg:top-24">
                   <CardHeader>
                     <div className="flex items-center justify-between text-xs font-bold tracking-widest text-foreground">
-                      <span>THÔNG TIN ĐẶT CHỖ</span>
-                      <Ticket className="size-5" />
+                      <span>BOOKING SUMMARY</span>
                     </div>
-                    <CardTitle className="mt-1">Hành trình của bạn</CardTitle>
+                    <CardTitle className="mt-1 text-base">
+                      Your journey
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -841,7 +688,7 @@ export function RailBookingExperience() {
                         </p>
                         <p className="text-xs text-muted-foreground">{from}</p>
                       </div>
-                      <TrainFront className="size-5 text-foreground" />
+                      <span className="h-px w-8 bg-border" aria-hidden="true" />
                       <div className="text-right">
                         <p className="text-sm font-semibold">
                           {clock(trip.arrival_at)}
@@ -850,52 +697,41 @@ export function RailBookingExperience() {
                       </div>
                     </div>
                     <Separator />
-                    <SummaryRow label="Chuyến tàu" value={trip.train_number} />
+                    <SummaryRow label="Train" value={trip.train_number} />
                     <SummaryRow
-                      label="Ngày đi"
+                      label="Departure date"
                       value={format(new Date(trip.departure_at), "dd/MM/yyyy")}
                     />
                     <SummaryRow
-                      label="Chỗ ngồi"
-                      value={selectedSeats.length
-                        ? selectedSeats.map((item) => `${item.coach_number}-${item.seat_number}`).join(", ")
-                        : "Chưa chọn"}
+                      label={seatChoice === "assign" ? "Suggested seats" : "Seats"}
+                      value={
+                        bookingSeats.length
+                          ? bookingSeats
+                              .map(
+                                (item) =>
+                                  `${item.coach_number}-${item.seat_number}`,
+                              )
+                              .join(", ")
+                          : "None selected"
+                      }
                     />
                     <SummaryRow
-                      label="Giá vé dự kiến"
+                      label="Estimated fare"
                       value={fareLabel(estimatedFare)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Giá được tính lại và chốt khi giữ chỗ.
+                      {seatChoice === "assign" ? "Suggestions may change until you place a hold. " : ""}
+                      The final fare is calculated when your seats are held.
                     </p>
-                    {selectedSeats.length > 0 && (
-                      <div className="space-y-3">
-                        <p className="text-sm font-medium">Thông tin hành khách</p>
-                        {selectedSeats.map((item, index) => (
-                          <div key={item.seat_id} className="space-y-1">
-                            <Label htmlFor={`passenger-${item.seat_id}`}>
-                              Ghế {item.coach_number}-{item.seat_number}
-                            </Label>
-                            <Input
-                              id={`passenger-${item.seat_id}`}
-                              maxLength={120}
-                              autoComplete="name"
-                              placeholder="Họ và tên hành khách"
-                              value={passengerNames[item.seat_id] ??
-                                (index === 0 ? authQuery.data?.user?.full_name : "") ?? ""}
-                              onChange={(event) => {
-                                setPassengerNames((current) => ({ ...current, [item.seat_id]: event.target.value }));
-                                setPassengerError("");
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
+                    {bookingSeats.length > 0 && (
+                      <SummaryRow
+                        label="Passenger names"
+                        value={`${bookingSeats.filter((seat, index) => passengerName(seat, index).trim().length >= 2).length}/${bookingSeats.length} complete`}
+                      />
                     )}
                     <Separator />
                     {authQuery.data?.user ? (
                       <div className="flex items-center gap-2 rounded-lg bg-muted p-3">
-                        <UserRound className="size-5 shrink-0 text-foreground" />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold">
                             {authQuery.data.user.full_name}
@@ -907,7 +743,7 @@ export function RailBookingExperience() {
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground">
-                        Đăng nhập hoặc tạo tài khoản để giữ ghế này.
+                        Sign in or create an account to hold these seats.
                       </p>
                     )}
                     {holdMutation.isError && (
@@ -915,170 +751,451 @@ export function RailBookingExperience() {
                         {apiErrorMessage(holdMutation.error)}
                       </p>
                     )}
-                    {passengerError && <p className="text-sm text-destructive">{passengerError}</p>}
                     <Button
                       className="w-full"
-                      onClick={holdSelectedSeat}
+                      onClick={reviewSelectedSeats}
                       disabled={
-                        selectedSeats.length === 0 || !seatsAvailable || holdMutation.isPending
+                        bookingSeats.length === 0 ||
+                        !seatsAvailable ||
+                        holdMutation.isPending
                       }
                     >
                       {holdMutation.isPending
-                        ? "Đang giữ ghế..."
+                        ? "Holding seats..."
                         : authQuery.data?.user
-                          ? `Giữ ${selectedSeats.length} chỗ ngay`
-                          : "Đăng nhập để giữ chỗ"}
-                      <ArrowRight className="size-4" />
+                          ? `Review ${bookingSeats.length} ${bookingSeats.length === 1 ? "seat" : "seats"}`
+                          : "Sign in to hold seats"}
                     </Button>
-                    <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <ShieldCheck className="size-4" /> Ghế được giữ trong 10
-                      phút sau khi đặt
+                    <p className="text-xs text-muted-foreground">
+                      Seats are held for 10 minutes after confirmation.
                     </p>
                   </CardContent>
                 </Card>
+                <BookingReviewSheet
+                  open={reviewOpen}
+                  onOpenChange={setReviewOpen}
+                  trip={trip}
+                  from={from}
+                  to={to}
+                  seats={reviewSeats}
+                  passengerNames={reviewNames}
+                  estimatedFare={reviewSeats.length && reviewSeats.every((seat) => seat.fare_vnd != null)
+                    ? reviewSeats.reduce((sum, seat) => sum + (seat.fare_vnd ?? 0), 0)
+                    : null}
+                  canConfirm={reviewSeats.length > 0 && reviewSeats.every((seat) =>
+                    seatsQuery.data?.seats.some((current) => current.seat_id === seat.seat_id && current.available && current.fare_vnd === seat.fare_vnd))}
+                  pending={holdMutation.isPending}
+                  error={
+                    holdMutation.isError
+                      ? apiErrorMessage(holdMutation.error)
+                      : undefined
+                  }
+                  onConfirm={() => holdMutation.mutate()}
+                />
               </div>
             )}
           </section>
         )}
 
-        <section id="how-it-works" className="mt-10 bg-card py-12">
+        <section
+          id="journey"
+          className="bg-[#111111] py-20 text-white sm:py-28"
+        >
           <div className="mx-auto max-w-7xl px-5 md:px-8">
-            <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold tracking-widest text-foreground">
-                  ĐƠN GIẢN TRONG TỪNG BƯỚC
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-white/45">
+              HOW BOOKING WORKS
+            </p>
+            <h2 className="mt-6 max-w-5xl text-4xl font-medium leading-[1.12] tracking-[-0.045em] sm:text-5xl lg:text-6xl">
+              Every step is clear.
+              <span className="text-white/40">
+                {" "}
+                From departure to seat selection.
+              </span>
+            </h2>
+            <div className="mt-16 grid border-t border-white/20 md:grid-cols-3">
+              <div className="border-b border-white/20 py-8 md:border-b-0 md:border-r md:pr-8">
+                <span className="text-xs font-mono text-white/40">
+                  01 / SEARCH
+                </span>
+                <div
+                  className="mt-12 h-px w-12 bg-white/50"
+                  aria-hidden="true"
+                />
+                <h3 className="mt-8 text-base font-semibold">
+                  Compare departures
+                </h3>
+                <p className="mt-3 max-w-xs text-sm leading-6 text-white/55">
+                  Search by stations and date to find a train that fits your
+                  plans.
                 </p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                  Đi tàu dễ đến thế.
-                </h2>
               </div>
-              <p className="max-w-sm text-sm leading-6 text-muted-foreground">
-                Một luồng đặt vé rõ ràng, từ chọn hành trình đến giữ đúng ghế
-                bạn muốn.
-              </p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Step
-                number="01 / TÌM KIẾM"
-                icon={<Search className="size-6" />}
-                title="Chọn hành trình"
-                copy="Nhập điểm đi, điểm đến và ngày khởi hành để tìm chuyến tàu phù hợp."
-              />
-              <Step
-                number="02 / CHỌN GHẾ"
-                icon={<TrainFront className="size-6" />}
-                title="Tìm chỗ của bạn"
-                copy="Xem trạng thái từng ghế trên đúng chặng đi và chọn vị trí yêu thích."
-              />
-              <Step
-                number="03 / GIỮ CHỖ"
-                icon={<Ticket className="size-6" />}
-                title="Hoàn tất đặt vé"
-                copy="Giữ ghế trong 10 phút và xác nhận đặt chỗ trong luồng demo."
-              />
+              <div className="border-b border-white/20 py-8 md:border-b-0 md:border-r md:px-8">
+                <span className="text-xs font-mono text-white/40">
+                  02 / SELECT
+                </span>
+                <div
+                  className="mt-12 h-px w-12 bg-white/50"
+                  aria-hidden="true"
+                />
+                <h3 className="mt-8 text-base font-semibold">
+                  Check your seats
+                </h3>
+                <p className="mt-3 max-w-xs text-sm leading-6 text-white/55">
+                  See which seats are available on your exact travel segment.
+                </p>
+              </div>
+              <div className="py-8 md:pl-8">
+                <span className="text-xs font-mono text-white/40">
+                  03 / CONFIRM
+                </span>
+                <div
+                  className="mt-12 h-px w-12 bg-white/50"
+                  aria-hidden="true"
+                />
+                <h3 className="mt-8 text-base font-semibold">Hold, then pay</h3>
+                <p className="mt-3 max-w-xs text-sm leading-6 text-white/55">
+                  Complete passenger details and payment during the seat hold.
+                </p>
+              </div>
             </div>
           </div>
         </section>
+
         <section
-          id="about"
-          className="mx-auto max-w-7xl px-5 py-10 md:px-8"
+          id="popular-routes"
+          className="border-t bg-muted/40 py-20 sm:py-28"
         >
-          <div>
-            <p className="text-xs font-bold tracking-widest text-foreground">
-              VỀ DỰ ÁN
+          <div className="mx-auto max-w-7xl px-5 md:px-8">
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                  ROUTES
+                </p>
+                <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">
+                  Where to next?
+                </h2>
+              </div>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                Choose a route to see trains for your selected date.
+              </p>
+            </div>
+            <div className="grid gap-x-12 md:grid-cols-2">
+              {[
+                { origin: "HN", destination: "SG", label: "Hanoi → Saigon" },
+                { origin: "HN", destination: "DN", label: "Hanoi → Da Nang" },
+                { origin: "DN", destination: "SG", label: "Da Nang → Saigon" },
+                { origin: "HN", destination: "VINH", label: "Hanoi → Vinh" },
+                { origin: "VINH", destination: "DN", label: "Vinh → Da Nang" },
+                {
+                  origin: "ND",
+                  destination: "SG",
+                  label: "Nam Dinh → Saigon",
+                },
+              ].map((route) => (
+                <button
+                  key={route.label}
+                  type="button"
+                  onClick={() =>
+                    searchPopularRoute(route.origin, route.destination)
+                  }
+                  className="group flex w-full items-center justify-between gap-4 border-b border-border py-4 text-left text-sm font-semibold transition-colors hover:text-primary sm:text-base"
+                >
+                  {route.label}
+                  <span
+                    aria-hidden="true"
+                    className="text-muted-foreground transition-transform group-hover:translate-x-1"
+                  >
+                    →
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="reviews"
+          aria-labelledby="reviews-heading"
+          className="border-t bg-background py-20 sm:py-28"
+        >
+          <div className="mx-auto max-w-7xl px-5 md:px-8">
+            <div className="mb-10 max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                PASSENGER PERSPECTIVE
+              </p>
+              <h2
+                id="reviews-heading"
+                className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl"
+              >
+                The details passengers notice.
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                A look at the booking experience from the other side of the
+                screen.
+              </p>
+            </div>
+            <div className="grid border-t md:grid-cols-3">
+              {sampleReviews.map((review, index) => (
+                <article
+                  key={review.route}
+                  className="flex flex-col border-b py-8 md:border-b-0 md:border-r md:px-8 md:last:border-r-0 md:first:pl-0"
+                >
+                  <span className="text-xs font-mono text-muted-foreground">
+                    0{index + 1} / {review.route}
+                  </span>
+                  <h3 className="mt-8 text-lg font-medium tracking-tight">
+                    {review.title}
+                  </h3>
+                  <p className="mt-3 flex-1 text-sm leading-7 text-muted-foreground">
+                    “{review.body}”
+                  </p>
+                </article>
+              ))}
+            </div>
+            <p className="mt-6 text-xs text-muted-foreground">
+              Illustrative feedback for this demo. Verified customer reviews
+              will appear when available.
             </p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-              Mỗi chặng đường, một trải nghiệm mới.
-            </h2>
-            <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
-              Railway là giao diện cho hệ thống đặt vé tàu đa chặng. Trạng thái
-              ghế phụ thuộc vào đoạn hành trình, nên một ghế có thể phục vụ
-              nhiều lượt khách trên cùng chuyến tàu.
-            </p>
-            <a
-              href="#search"
-              className={cn(buttonVariants({ variant: "outline" }), "mt-4")}
-            >
-              Khám phá hành trình <ArrowUpRight className="size-4" />
-            </a>
+          </div>
+        </section>
+
+        <section id="help" className="border-t bg-background py-20 sm:py-28">
+          <div className="mx-auto grid max-w-7xl gap-10 px-5 md:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                GOOD TO KNOW
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em]">
+                Frequently asked questions
+              </h2>
+              <p className="mt-4 max-w-sm text-sm leading-6 text-muted-foreground">
+                The practical details on seats, holds, and payment.
+              </p>
+            </div>
+            <div className="divide-y divide-border border-y border-border">
+              <details className="group py-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold marker:hidden">
+                  How long is a seat held?
+                  <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" />
+                </summary>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  After a successful hold, you have 10 minutes to pay. If the
+                  hold expires, the seat may become available to others.
+                </p>
+              </details>
+              <details className="group py-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold marker:hidden">
+                  Why is a seat available on another segment?
+                  <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" />
+                </summary>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Availability is calculated for each part of a train&apos;s
+                  route. A seat booked on one segment can still be available on
+                  a later segment that does not overlap.
+                </p>
+              </details>
+              <details className="group py-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold marker:hidden">
+                  When is my booking confirmed?
+                  <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" />
+                </summary>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Your booking is confirmed when the system receives a
+                  successful payment notification from VNPAY. You can check its
+                  status in My bookings.
+                </p>
+              </details>
+            </div>
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="next-journey-heading"
+          className="border-t bg-muted/40 py-20 sm:py-28"
+        >
+          <div className="mx-auto max-w-7xl px-5 md:px-8">
+            <div className="mb-10 max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                NEXT STEPS
+              </p>
+              <h2
+                id="next-journey-heading"
+                className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl"
+              >
+                What would you like to do?
+              </h2>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <a
+                href="#search"
+                className="group flex min-h-60 flex-col justify-between border bg-card p-7 transition-colors hover:bg-muted/50 sm:p-9"
+              >
+                <span className="text-xs font-mono text-muted-foreground">
+                  01 / SEARCH
+                </span>
+                <div className="mt-12">
+                  <h3 className="text-2xl font-medium tracking-tight">
+                    Find a train
+                  </h3>
+                  <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                    Search departures and check seats for your route.
+                  </p>
+                  <span className="mt-6 inline-block text-sm font-medium underline underline-offset-4">
+                    Search trains
+                  </span>
+                </div>
+              </a>
+              <Link
+                href="/bookings"
+                className="group flex min-h-60 flex-col justify-between border bg-card p-7 transition-colors hover:bg-muted/50 sm:p-9"
+              >
+                <span className="text-xs font-mono text-muted-foreground">
+                  02 / MANAGE
+                </span>
+                <div className="mt-12">
+                  <h3 className="text-2xl font-medium tracking-tight">
+                    My bookings
+                  </h3>
+                  <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                    View your booking reference, seats, and payment status.
+                  </p>
+                  <span className="mt-6 inline-block text-sm font-medium underline underline-offset-4">
+                    Open bookings
+                  </span>
+                </div>
+              </Link>
+            </div>
           </div>
         </section>
       </main>
-      <footer className="border-t border-border bg-card">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-6 text-xs text-muted-foreground md:px-8">
-          <span className="flex items-center gap-2 font-bold text-foreground">
-            <TrainFront className="size-4" /> railway.
-          </span>
-          <span>Đồ án hệ thống đặt vé tàu đa chặng</span>
-          <span>Trải nghiệm demo</span>
+      <footer className="bg-[#111111] text-white">
+        <div className="mx-auto max-w-7xl px-5 pb-8 pt-14 md:px-8 sm:pt-16">
+          <div className="grid gap-10 border-b border-white/15 pb-12 sm:grid-cols-2 lg:grid-cols-[1.5fr_repeat(3,1fr)] lg:gap-12">
+            <div className="max-w-sm">
+              <a
+                href="#top"
+                className="inline-flex items-center gap-2 text-xl font-bold tracking-tight"
+                aria-label="Railway home"
+              >
+                railway<span className="text-white/50">.</span>
+              </a>
+              <p className="mt-5 text-sm leading-6 text-white/65">
+                Search trains, choose seats for your route, and keep your
+                booking details close at hand.
+              </p>
+            </div>
+
+            <nav aria-label="Explore">
+              <h2 className="text-sm font-semibold">Explore</h2>
+              <ul className="mt-5 space-y-3 text-sm text-white/65">
+                <li>
+                  <a
+                    className="transition-colors hover:text-white"
+                    href="#search"
+                  >
+                    Search trains
+                  </a>
+                </li>
+                <li>
+                  <a
+                    className="transition-colors hover:text-white"
+                    href="#popular-routes"
+                  >
+                    Routes
+                  </a>
+                </li>
+                <li>
+                  <a
+                    className="transition-colors hover:text-white"
+                    href="#journey"
+                  >
+                    How booking works
+                  </a>
+                </li>
+                <li>
+                  <a
+                    className="transition-colors hover:text-white"
+                    href="#reviews"
+                  >
+                    Passenger feedback
+                  </a>
+                </li>
+              </ul>
+            </nav>
+
+            <nav aria-label="Account">
+              <h2 className="text-sm font-semibold">Account</h2>
+              <ul className="mt-5 space-y-3 text-sm text-white/65">
+                <li>
+                  <Link
+                    className="transition-colors hover:text-white"
+                    href="/bookings"
+                  >
+                    My bookings
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    className="transition-colors hover:text-white"
+                    href="/login"
+                  >
+                    Sign in
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    className="transition-colors hover:text-white"
+                    href="/register"
+                  >
+                    Create an account
+                  </Link>
+                </li>
+              </ul>
+            </nav>
+
+            <nav aria-label="Information">
+              <h2 className="text-sm font-semibold">Information</h2>
+              <ul className="mt-5 space-y-3 text-sm text-white/65">
+                <li>
+                  <a
+                    className="transition-colors hover:text-white"
+                    href="#help"
+                  >
+                    FAQs
+                  </a>
+                </li>
+                <li>
+                  <a
+                    className="transition-colors hover:text-white"
+                    href="#journey"
+                  >
+                    How to book
+                  </a>
+                </li>
+                <li>
+                  <a
+                    className="transition-colors hover:text-white"
+                    href="#help"
+                  >
+                    Holds and payment
+                  </a>
+                </li>
+              </ul>
+            </nav>
+          </div>
+
+          <div className="flex flex-col gap-3 pt-6 text-xs text-white/50 sm:flex-row sm:items-center sm:justify-between">
+            <span>© railway. A demonstration railway booking project.</span>
+            <a
+              href="#top"
+              className="inline-flex items-center gap-1 transition-colors hover:text-white"
+            >
+              Back to top
+            </a>
+          </div>
         </div>
       </footer>
     </div>
-  );
-}
-
-function TripCard({
-  trip,
-  from,
-  to,
-  selected,
-  onSelect,
-}: {
-  trip: TripSearchItem;
-  from: string;
-  to: string;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <Card
-      className={cn(
-        "bg-card transition-colors hover:bg-accent/20",
-        selected && "ring-1 ring-primary",
-      )}
-    >
-      <CardContent className="grid gap-5 md:grid-cols-[130px_1fr_auto] md:items-center">
-        <div className="flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-muted text-foreground">
-            <TrainFront className="size-5" />
-          </span>
-          <div>
-            <p className="text-xs text-muted-foreground">CHUYẾN TÀU</p>
-            <p className="font-bold text-foreground">{trip.train_number}</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <div>
-            <p className="text-base font-semibold">
-              {clock(trip.departure_at)}
-            </p>
-            <p className="text-xs text-muted-foreground">{from}</p>
-          </div>
-          <div className="text-center text-xs text-muted-foreground">
-            <Clock3 className="mx-auto mb-1 size-4" />
-            {tripDuration(trip.departure_at, trip.arrival_at)}
-          </div>
-          <div className="text-right">
-            <p className="text-base font-semibold">{clock(trip.arrival_at)}</p>
-            <p className="text-xs text-muted-foreground">{to}</p>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-3 md:flex-col md:items-end">
-          <div className="text-right">
-            <p className="text-xs text-muted-foreground">
-              {format(new Date(trip.departure_at), "dd MMM yyyy", { locale: vi })}
-            </p>
-            <p className="mt-1 text-sm font-medium">
-              {trip.fare_from_vnd == null ? "Chưa có giá" : `Từ ${fareLabel(trip.fare_from_vnd)}`}
-            </p>
-          </div>
-          <Button onClick={onSelect}>
-            {selected ? "Đang chọn" : "Chọn chuyến"}
-            <ArrowRight className="size-4" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -1088,30 +1205,5 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground">{label}</span>
       <strong className="text-right text-foreground">{value}</strong>
     </div>
-  );
-}
-
-function Step({
-  number,
-  icon,
-  title,
-  copy,
-}: {
-  number: string;
-  icon: ReactNode;
-  title: string;
-  copy: string;
-}) {
-  return (
-    <Card className="bg-background">
-      <CardContent className="space-y-4">
-        <Badge variant="outline">{number}</Badge>
-        <div className="flex size-12 items-center justify-center rounded-xl bg-muted text-foreground">
-          {icon}
-        </div>
-        <h3 className="text-base font-semibold text-foreground">{title}</h3>
-        <p className="text-sm leading-6 text-muted-foreground">{copy}</p>
-      </CardContent>
-    </Card>
   );
 }

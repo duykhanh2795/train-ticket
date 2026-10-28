@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AuthPage } from "@/features/auth/auth-page";
 
-export const metadata: Metadata = { title: "Đăng ký | Railway" };
+export const metadata: Metadata = { title: "Create account | Railway" };
 
 export default function RegisterPage() {
   return (

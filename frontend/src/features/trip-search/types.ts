@@ -7,12 +7,14 @@ export interface TripSearchQuery {
 export interface TripSearchItem {
   trip_id: string;
   train_number: string;
+  operator_name?: string;
   service_date: string;
   from_stop: number;
   to_stop: number;
   departure_at: string;
   arrival_at: string;
   fare_from_vnd: number | null;
+  seats_left?: number;
 }
 
 export interface TripSearchResponse {

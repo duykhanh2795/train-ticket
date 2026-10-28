@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --blue:#0a0a0b;
+  --ink:#fafafa; --mute:#8c8c94; --field:#1d1d20; --line:#26262a;
+  --font:'Plus Jakarta Sans','Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0}
+body{min-height:100vh;display:grid;place-items:center;background:#0a0a0b;font-family:var(--font);-webkit-font-smoothing:antialiased;color:var(--ink)}
+
+/* device */
+.phone{position:relative;width:282px;height:590px;border-radius:50px;padding:8px;
+  background:linear-gradient(150deg,#5b5c62 0,#1e1f22 16%,#0a0a0b 50%,#2c2d31 100%);
+  box-shadow:0 0 0 1px rgba(255,255,255,.07),0 50px 80px -30px rgba(0,0,0,.9)}
+.phone::before,.phone::after{content:"";position:absolute;width:3px;border-radius:2px;background:#2b2c30}
+.phone::before{left:-2px;top:116px;height:30px;box-shadow:0 46px 0 #2b2c30}
+.phone::after{right:-2px;top:150px;height:58px}
+.bezel{height:100%;border-radius:42px;background:#000;padding:2.5px}
+.screen{position:relative;height:100%;border-radius:40px;background:#000;overflow:hidden}
+.screen::after{content:"";position:absolute;inset:0;z-index:7;pointer-events:none;border-radius:inherit;background:linear-gradient(125deg,rgba(255,255,255,.09),transparent 26%)}
+.island{position:absolute;top:9px;left:50%;width:80px;height:23px;margin-left:-40px;border-radius:14px;background:#000;z-index:5}
+
+/* hero */
+.hero{position:absolute;inset:0 0 auto 0;height:262px;color:#fff;padding:0 18px;
+  background:
+   linear-gradient(115deg,transparent 46%,rgba(255,255,255,.07) 52%,transparent 60%),
+   radial-gradient(80% 90% at 100% 0%,rgba(255,255,255,.20),transparent 60%),
+   linear-gradient(135deg,#34343a 0%,#17171a 42%,#09090b 100%)}
+.star{position:absolute;right:-34px;top:-30px;width:150px;height:150px;opacity:.05}
+.sb{position:relative;display:flex;justify-content:space-between;align-items:center;height:42px;padding:8px 6px 0;font-size:11px;font-weight:600}
+.sb span:last-child{display:flex;gap:5px;align-items:center}
+.sb svg{height:9px;fill:currentColor}
+.dateRow{position:relative;display:flex;justify-content:space-between;align-items:flex-start;margin-top:12px}
+.dateRow b{display:block;font-size:10.5px;font-weight:700}
+.dateRow small{display:flex;align-items:center;gap:3px;margin-top:3px;font-size:8px;opacity:.7;font-weight:500}
+.dateRow small svg{width:8px;height:8px}
+.bell{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.16);display:grid;place-items:center}
+.bell svg{width:12px;height:12px}
+.hero h2{position:relative;margin-top:20px;font-size:13.5px;font-weight:700;letter-spacing:-.01em}
+.hero p{position:relative;margin-top:3px;font-size:8px;opacity:.65;font-weight:500}
+
+/* white sheet */
+.sheet{position:absolute;left:0;right:0;top:238px;bottom:0;border-radius:24px 24px 0 0;background:linear-gradient(180deg,#151517,#0a0a0b 40%);box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+
+/* search card */
+.card{position:absolute;left:12px;right:12px;top:136px;z-index:3;background:linear-gradient(180deg,#1a1a1d,#121214);border-radius:18px;padding:10px;
+  box-shadow:0 8px 18px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.08),inset 0 1px 0 rgba(255,255,255,.08)}
+.seg{display:inline-flex;background:var(--field);border-radius:8px;padding:2px;font-size:8.5px;font-weight:600;color:var(--mute)}
+.seg span{padding:4px 9px;border-radius:6px}
+.seg .on{background:#2e2e33;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.08)}
+.group{position:relative;margin-top:8px;border-radius:12px;background:linear-gradient(180deg,#232326,#18181b);overflow:hidden}
+.group::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(150deg,rgba(255,255,255,.38),rgba(255,255,255,.06) 38%,rgba(255,255,255,.04) 62%,rgba(255,255,255,.18));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+.field{padding:8px 11px}
+.group>.field,.two{border-top:1px solid rgba(255,255,255,.07)}
+.group>.field:first-child{border-top:0}
+.two .field+.field{border-left:1px solid rgba(255,255,255,.07)}
+.field small{display:block;font-size:7.5px;color:var(--mute);font-weight:500}
+.field b{display:block;font-size:10.5px;font-weight:600;margin-top:2px}
+.two{display:grid;grid-template-columns:1fr 1fr}
+.btn{margin-top:9px;height:30px;border-radius:999px;background:linear-gradient(180deg,#ffffff,#c9c9ce);color:#09090b;font-size:10.5px;font-weight:600;display:grid;place-items:center;box-shadow:inset 0 1px 0 #fff,0 4px 12px rgba(0,0,0,.45)}
+
+/* boarding QR — không khung, không card */
+.pass{position:absolute;left:20px;right:20px;top:384px;z-index:4;display:flex;align-items:center;gap:18px}
+.pass svg{width:88px;height:88px;flex:none;border-radius:0;background:#fff;padding:6px}
+.spec{flex:1;margin:0;font-size:9.5px}
+.spec div{display:flex;justify-content:space-between;align-items:baseline;padding:6.5px 0;border-top:1px solid var(--line)}
+.spec div:first-child{border-top:0;padding-top:0}
+.spec div:last-child{padding-bottom:0}
+.spec dt{color:var(--mute);font-weight:500}
+.spec dd{margin:0;font-weight:600;color:var(--ink)}
+
+/* tab bar */
+.tabs{position:absolute;left:0;right:0;bottom:0;height:56px;z-index:4;background:#0a0a0b;border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:flex-start;padding:12px 18px 0}
+.tabs svg{width:15px;height:15px;stroke:#7d7d86;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tabs .on svg{stroke:#fff;fill:#fff}
+.home-bar{position:absolute;bottom:5px;left:50%;width:88px;height:3.5px;margin-left:-44px;border-radius:3px;background:rgba(255,255,255,.6);z-index:6}
+
+/* hiệu ứng quét QR: dải xanh trải ngang, vạch sáng ở mép trên, vệt xanh mờ dần xuống dưới (cao 50% mã QR) */
+.scan{position:relative;width:88px;height:88px;flex:none}
+.scan svg{animation:qrTint 3.2s linear infinite}
+@keyframes qrTint{
+  0%,6%{filter:none}
+  40%,70%{filter:saturate(1.1) brightness(.98) hue-rotate(-8deg)}
+  100%{filter:none}
+}
+.band{position:absolute;left:-20px;right:-20px;top:0;height:88px;overflow:hidden;pointer-events:none;z-index:3}
+.band i{position:absolute;left:0;right:0;top:0;height:46px;opacity:0;
+  background:linear-gradient(180deg,rgba(59,130,246,.6) 0,rgba(37,99,235,.38) 30%,rgba(37,99,235,.15) 65%,rgba(37,99,235,0) 100%);
+  animation:bandSweep 3.2s cubic-bezier(.4,.1,.35,1) infinite}
+.band i::before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:#8fc0ff;
+  box-shadow:0 0 4px 1px rgba(143,192,255,.75),0 0 14px 4px rgba(59,130,246,.5),0 0 28px 8px rgba(37,99,235,.28)}
+@keyframes bandSweep{
+  0%{transform:translateY(-3px);opacity:0}
+  8%{opacity:1}
+  72%{transform:translateY(86px);opacity:1}
+  82%{transform:translateY(90px);opacity:0}
+  100%{transform:translateY(90px);opacity:0}
+}
+@media (prefers-reduced-motion:reduce){
+  .scan svg,.band i{animation:none}
+  .band i{opacity:1;transform:translateY(0)}
+}
+</style>
+</head>
+<body>
+<div class="phone"><div class="bezel"><div class="screen">
+  <div class="island"></div>
+
+  <div class="hero">
+    <svg class="star" viewBox="0 0 100 100" fill="#fff"><rect x="42" y="0" width="16" height="100" rx="8"/><rect x="42" y="0" width="16" height="100" rx="8" transform="rotate(60 50 50)"/><rect x="42" y="0" width="16" height="100" rx="8" transform="rotate(120 50 50)"/></svg>
+    <div class="sb">
+      <span>9:41</span>
+      <span>
+        <svg viewBox="0 0 17 10"><rect x="0" y="6" width="3" height="4" rx=".8"/><rect x="4.7" y="4" width="3" height="6" rx=".8"/><rect x="9.4" y="2" width="3" height="8" rx=".8"/><rect x="14" y="0" width="3" height="10" rx=".8"/></svg>
+        <svg viewBox="0 0 26 11"><rect x=".5" y=".5" width="22" height="10" rx="3" fill="none" stroke="currentColor" opacity=".5"/><rect x="2" y="2" width="19" height="7" rx="1.8"/><rect x="24" y="3.5" width="1.6" height="4" rx=".8" opacity=".5"/></svg>
+      </span>
+    </div>
+    <div class="dateRow">
+      <div>
+        <b>Friday, 23 Oct 2026</b>
+        <small><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Hanoi, Vietnam</small>
+      </div>
+      <div class="bell"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6zM10 19a2 2 0 0 0 4 0"/></svg></div>
+    </div>
+    <h2>Where do you want to go?</h2>
+    <p>Pick a route, choose your seat, travel with ease</p>
+  </div>
+
+  <div class="sheet"></div>
+
+  <div class="card">
+    <div class="seg"><span class="on">One Way</span><span>Round Trip</span></div>
+    <div class="group">
+    <div class="field"><small>Departure station</small><b>Hanoi Station, HAN</b></div>
+    <div class="field"><small>Destination</small><b>Saigon Station, SGN</b></div>
+    <div class="two">
+      <div class="field"><small>Departure date</small><b>Oct 23, 2026</b></div>
+      <div class="field"><small>Passengers</small><b>2 Seats</b></div>
+    </div>
+    </div>
+    <div class="btn">Search Trains</div>
+  </div>
+
+  <div class="pass">
+    <div class="scan"><svg id="qr" viewBox="0 0 29 29" shape-rendering="crispEdges" aria-label="Boarding QR code"></svg></div>
+    <div class="band" aria-hidden="true"><i></i></div>
+    <dl class="spec">
+      <div><dt>Train</dt><dd>SE1</dd></div>
+      <div><dt>Coach</dt><dd>04</dd></div>
+      <div><dt>Seat</dt><dd>2B</dd></div>
+      <div><dt>Class</dt><dd>Soft seat</dd></div>
+    </dl>
+  </div>
+
+  <nav class="tabs">
+    <span class="on"><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg></span>
+    <span><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span>
+    <span><svg viewBox="0 0 24 24"><path d="M4 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 6v12" stroke-dasharray="2 2"/></svg></span>
+    <span><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg></span>
+  </nav>
+  <div class="home-bar"></div>
+</div></div></div>
+<script>
+// QR trang trí (cố định). Thay bằng QR thật khi triển khai.
+(function(){
+  var n=29,seed=7,out='';
+  function rnd(){seed=(seed*16807)%2147483647;return seed/2147483647}
+  function reserved(i,j){return (i<8&&j<8)||(i>n-9&&j<8)||(i<8&&j>n-9)}
+  function finder(x,y){
+    for(var i=0;i<7;i++)for(var j=0;j<7;j++){
+      var edge=i==0||j==0||i==6||j==6,core=i>=2&&i<=4&&j>=2&&j<=4;
+      if(edge||core)out+='<rect x="'+(x+i)+'" y="'+(y+j)+'" width="1" height="1"/>';
+    }
+  }
+  for(var i=0;i<n;i++)for(var j=0;j<n;j++){
+    if(reserved(i,j))continue;
+    if(rnd()>.5)out+='<rect x="'+i+'" y="'+j+'" width="1" height="1"/>';
+  }
+  finder(0,0);finder(n-7,0);finder(0,n-7);
+  document.getElementById('qr').innerHTML='<g fill="#0a0a0b">'+out+'</g>';
+})();
+</script>
+</body>
+</html>

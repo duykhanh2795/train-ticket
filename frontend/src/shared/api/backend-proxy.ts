@@ -21,20 +21,37 @@ export async function backendProxy(
       transformResponse: (data) => data,
       validateStatus: () => true,
     });
-    return new Response(upstream.data, {
-      status: upstream.status,
-      headers: {
-        "Content-Type": String(upstream.headers["content-type"] ?? "application/json"),
-        "Cache-Control": "no-store",
+    const responseHeaders = new Headers({ "Cache-Control": "no-store" });
+    responseHeaders.set(
+      "Content-Type",
+      String(upstream.headers["content-type"] ?? "application/json"),
+    );
+    const requestId = upstream.headers["x-request-id"];
+    if (typeof requestId === "string") {
+      responseHeaders.set("X-Request-ID", requestId);
+    }
+    return new Response(
+      [204, 205, 304].includes(upstream.status) ? null : upstream.data,
+      {
+        status: upstream.status,
+        headers: responseHeaders,
       },
-    });
-  } catch {
+    );
+  } catch (error) {
+    const timedOut =
+      axios.isAxiosError(error) &&
+      (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT");
     return Response.json(
       {
-        error: "Không kết nối được API. Hãy khởi động backend Go rồi thử lại.",
-        code: "backend_unavailable",
+        error: timedOut
+          ? "The API took too long to respond. Please try again."
+          : "Could not connect to the API. Please try again.",
+        code: timedOut ? "backend_timeout" : "backend_unavailable",
       },
-      { status: 502 },
+      {
+        status: timedOut ? 504 : 502,
+        headers: { "Cache-Control": "no-store" },
+      },
     );
   }
 }

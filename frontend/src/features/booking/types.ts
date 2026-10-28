@@ -30,7 +30,7 @@ export interface BookingView extends BookingResponse {
   to_stop: number;
   origin_station: string;
   destination_station: string;
-	seats: BookingSeat[];
+  seats: BookingSeat[];
 }
 
 export interface BookingSeat {
@@ -48,9 +48,35 @@ export interface BookingPage {
   offset: number;
 }
 
+export interface TicketView {
+  id: string;
+  booking_id: string;
+  seat_id: string;
+  issued_at: string;
+  full_name: string;
+  coach_number: string;
+  seat_number: string;
+}
+
+export interface TicketPage {
+  tickets: TicketView[];
+}
+
 export interface HoldBookingInput {
   trip_id: string;
   passengers: { seat_id: string; full_name: string }[];
   from_stop: number;
   to_stop: number;
+}
+
+export interface PaymentAttempt {
+  payment_id: number;
+  booking_id: string;
+  amount_vnd: number;
+  status: "pending" | "failed" | "succeeded" | "paid_unfulfilled";
+  expires_at: string;
+}
+
+export interface CheckoutResponse extends PaymentAttempt {
+  checkout_url: string;
 }

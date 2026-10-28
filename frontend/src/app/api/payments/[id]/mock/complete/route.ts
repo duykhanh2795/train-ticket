@@ -5,15 +5,13 @@ import {
 
 export async function POST(
   request: Request,
-  context: RouteContext<"/api/bookings/[id]/confirm">,
+  context: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await context.params;
   const forbidden = requireSameOrigin(request);
   if (forbidden) return forbidden;
+  const { id } = await context.params;
   return authorizedBackendProxy(
-    `api/v1/bookings/${encodeURIComponent(id)}/confirm`,
-    {
-      method: "POST",
-    },
+    `api/v1/payments/${encodeURIComponent(id)}/mock/complete`,
+    { method: "POST" },
   );
 }

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { BookingDetailsPage } from "@/features/booking/bookings-page";
 
-export const metadata: Metadata = { title: "Chi tiết đặt chỗ | Railway" };
+export const metadata: Metadata = { title: "Booking details | Railway" };
 
 export default function Page({ params }: PageProps<"/bookings/[id]">) {
   return (

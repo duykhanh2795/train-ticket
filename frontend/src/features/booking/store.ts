@@ -13,6 +13,7 @@ interface BookingState {
   setSearch: (search: TripSearchQuery) => void;
   chooseTrip: (trip: TripSearchItem) => void;
   chooseSeat: (seat: SeatItem) => void;
+  setSelectedSeats: (seats: SeatItem[]) => void;
   setBooking: (booking: BookingResponse) => void;
   reset: () => void;
 }
@@ -29,6 +30,7 @@ export const useBookingStore = create<BookingState>((set) => ({
       ? state.selectedSeats.filter((item) => item.seat_id !== seat.seat_id)
       : state.selectedSeats.length < 6 ? [...state.selectedSeats, seat] : state.selectedSeats,
   })),
+  setSelectedSeats: (seats) => set({ selectedSeats: seats.slice(0, 6) }),
   setBooking: (booking) => set({ booking }),
   reset: () => set({ search: null, trip: null, selectedSeats: [], booking: null }),
 }));

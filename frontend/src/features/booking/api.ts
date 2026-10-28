@@ -5,6 +5,9 @@ import type {
   BookingView,
   HoldBookingInput,
   SeatResponse,
+  CheckoutResponse,
+  PaymentAttempt,
+  TicketPage,
 } from "./types";
 
 export async function listSeats(
@@ -31,9 +34,23 @@ export async function holdBooking(
   return response.data;
 }
 
-export async function confirmBooking(id: string): Promise<BookingResponse> {
-  const response = await apiClient.post<BookingResponse>(
-    `/bookings/${encodeURIComponent(id)}/confirm`,
+export async function createCheckout(id: string): Promise<CheckoutResponse> {
+  const response = await apiClient.post<CheckoutResponse>(
+    `/bookings/${encodeURIComponent(id)}/checkout`,
+  );
+  return response.data;
+}
+
+export async function getPayment(id: string): Promise<PaymentAttempt> {
+  const response = await apiClient.get<PaymentAttempt>(
+    `/payments/${encodeURIComponent(id)}`,
+  );
+  return response.data;
+}
+
+export async function completeMockPayment(id: string): Promise<PaymentAttempt> {
+  const response = await apiClient.post<PaymentAttempt>(
+    `/payments/${encodeURIComponent(id)}/mock/complete`,
   );
   return response.data;
 }
@@ -58,6 +75,13 @@ export async function listBookings(
 export async function getBooking(id: string): Promise<BookingView> {
   const response = await apiClient.get<BookingView>(
     `/bookings/${encodeURIComponent(id)}`,
+  );
+  return response.data;
+}
+
+export async function getTickets(id: string): Promise<TicketPage> {
+  const response = await apiClient.get<TicketPage>(
+    `/bookings/${encodeURIComponent(id)}/tickets`,
   );
   return response.data;
 }

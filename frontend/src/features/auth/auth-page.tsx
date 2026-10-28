@@ -2,10 +2,9 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, TrainFront } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -13,93 +12,95 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiErrorMessage } from "@/shared/api/client";
+import { ApiError, apiErrorMessage } from "@/shared/api/client";
 import { login, register } from "./api";
 import type { AuthResponse } from "./types";
 
 const loginSchema = z.object({
-  email: z.email("Email không hợp lệ"),
-  password: z.string().min(1, "Nhập mật khẩu"),
+  email: z.email("Enter a valid email address"),
+  password: z.string().min(1, "Enter your password"),
 });
 const registerSchema = z
   .object({
-    full_name: z.string().trim().min(2, "Tên cần ít nhất 2 ký tự").max(100),
-    email: z.email("Email không hợp lệ"),
+    full_name: z
+      .string()
+      .trim()
+      .min(2, "Name must be at least 2 characters")
+      .max(100),
+    email: z.email("Enter a valid email address"),
     password: z
       .string()
-      .min(12, "Mật khẩu cần ít nhất 12 ký tự")
-      .max(72, "Mật khẩu quá dài"),
+      .min(12, "Password must be at least 12 characters")
+      .max(72, "Password is too long"),
     confirmPassword: z.string(),
   })
   .refine((value) => value.password === value.confirmPassword, {
     path: ["confirmPassword"],
-    message: "Mật khẩu nhập lại chưa khớp",
+    message: "Passwords do not match",
   });
 type LoginForm = z.infer<typeof loginSchema>;
 type RegisterForm = z.infer<typeof registerSchema>;
 
 function authErrorMessage(error: unknown) {
-  if (axios.isAxiosError(error)) {
-    const code = (error.response?.data as { code?: string } | undefined)?.code;
-    if (code === "email_taken") return "Email này đã được đăng ký.";
-    if (code === "invalid_credentials")
-      return "Email hoặc mật khẩu không đúng.";
-    if (code === "invalid_registration")
-      return "Vui lòng kiểm tra tên, email và mật khẩu.";
+  if (error instanceof ApiError) {
+    if (error.code === "email_taken") return "This email is already registered.";
+    if (error.code === "invalid_credentials") return "Incorrect email or password.";
+    if (error.code === "invalid_registration")
+      return "Check your name, email, and password.";
   }
   return apiErrorMessage(error);
 }
 
 export function AuthPage({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
-  const returnTarget = useSearchParams().get("return");
+  const searchParams = useSearchParams();
+  const returnTarget = searchParams.get("return");
   const returnToBooking = returnTarget === "booking";
   const returnToBookings = returnTarget === "bookings";
+  const returnToAccount = returnTarget === "account";
+  const returnToGate = returnTarget === "gate";
+  const requestedPassengers = Number(searchParams.get("pax"));
+  const passengerCount = Number.isInteger(requestedPassengers) && requestedPassengers >= 1 && requestedPassengers <= 4 ? requestedPassengers : 1;
   const queryClient = useQueryClient();
   function signedIn(result: AuthResponse) {
     queryClient.setQueryData(["auth", "me"], result);
     router.replace(
-      returnToBooking ? "/#booking-flow" : returnToBookings ? "/bookings" : "/",
+      returnToBooking ? `/booking?pax=${passengerCount}#booking-flow` : returnToBookings ? "/bookings" : returnToAccount ? "/account" : returnToGate ? "/gate" : "/",
     );
   }
   const returnSuffix = returnToBooking
-    ? "?return=booking"
+    ? `?return=booking&pax=${passengerCount}`
     : returnToBookings
       ? "?return=bookings"
+      : returnToAccount
+        ? "?return=account"
+      : returnToGate
+        ? "?return=gate"
       : "";
   const otherPage = `${mode === "login" ? "/register" : "/login"}${returnSuffix}`;
 
   return (
-    <main className="grid min-h-screen lg:grid-cols-2">
+    <main className="railway-landing grid min-h-[calc(100vh-60px)] lg:grid-cols-2">
       <div className="flex flex-col bg-background px-4 py-4 sm:px-8 lg:px-10">
-        <Link
-          href="/"
-          className="flex w-fit items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
-        >
-          <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <TrainFront className="size-5" />
-          </span>{" "}
-          railway<span className="-ml-2 text-muted-foreground">.</span>
-        </Link>
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-8">
           <Link
             href="/"
             className="mb-4 flex w-fit items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
           >
-            <ArrowLeft className="size-4" /> Quay về trang chủ
+            <ArrowLeft className="size-4" /> Back to home
           </Link>
           <Card className="bg-card shadow-none">
             <CardHeader>
               <p className="text-xs font-medium tracking-widest text-muted-foreground">
-                {mode === "login" ? "CHÀO MỪNG TRỞ LẠI" : "BẮT ĐẦU HÀNH TRÌNH"}
+                {mode === "login" ? "WELCOME BACK" : "GET STARTED"}
               </p>
               <CardTitle>
-                {mode === "login" ? "Đăng nhập tài khoản" : "Tạo tài khoản mới"}
+                {mode === "login" ? "Sign in" : "Create an account"}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
                 {mode === "login"
-                  ? "Đăng nhập để giữ ghế và quản lý chuyến đi của bạn."
-                  : "Tạo tài khoản để đặt vé tàu nhanh hơn."}
+                  ? "Sign in to reserve seats and manage your trips."
+                  : "Create an account to book your train tickets."}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -109,43 +110,38 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
                 <RegisterFields onSuccess={signedIn} />
               )}
               <p className="text-center text-sm text-muted-foreground">
-                {mode === "login" ? "Chưa có tài khoản?" : "Đã có tài khoản?"}{" "}
+                {mode === "login" ? "New here?" : "Already have an account?"}{" "}
                 <Link
                   className="font-semibold text-foreground hover:underline"
                   href={otherPage}
                 >
-                  {mode === "login" ? "Đăng ký ngay" : "Đăng nhập"}
+                  {mode === "login" ? "Create an account" : "Sign in"}
                 </Link>
               </p>
             </CardContent>
           </Card>
         </div>
-        <p className="text-xs text-muted-foreground">
-          © Railway · Đồ án hệ thống đặt vé tàu đa chặng
-        </p>
+        <p className="text-xs text-muted-foreground">Railway · Train tickets</p>
       </div>
       <aside className="hidden min-h-screen flex-col justify-between border-l border-border bg-muted p-8 text-foreground lg:flex">
         <span className="text-xs font-medium tracking-widest text-muted-foreground">
-          HÀNH TRÌNH BẮT ĐẦU TỪ ĐÂY
+          TRAVEL BY RAIL
         </span>
         <div className="max-w-lg">
-          <TrainFront className="mb-6 size-10 text-primary" />
           <h2 className="text-3xl font-semibold leading-tight tracking-tight">
-            Đi xa hơn.
+            Find your train.
             <br />
-            <span className="text-muted-foreground">Dễ dàng hơn.</span>
+            <span className="text-muted-foreground">Choose your seat.</span>
           </h2>
           <p className="mt-4 max-w-sm text-sm leading-6 text-muted-foreground">
-            Tìm chuyến, chọn đúng ghế và giữ chỗ cho hành trình của bạn trong
-            vài bước.
+            Search a route, see available seats, and keep your booking in one
+            place.
           </p>
         </div>
         <div className="flex items-center gap-4 border-t border-border pt-6 text-xs text-muted-foreground">
-          <span>HÀ NỘI</span>
+          <span>HANOI</span>
           <span className="h-px flex-1 bg-border" />
-          <TrainFront className="size-5 text-primary" />
-          <span className="h-px flex-1 bg-border" />
-          <span>SÀI GÒN</span>
+          <span>SAIGON</span>
         </div>
       </aside>
     </main>
@@ -173,7 +169,7 @@ function LoginFields({
           id="login-email"
           type="email"
           autoComplete="email"
-          placeholder="ban@example.com"
+          placeholder="you@example.com"
           autoFocus
           {...form.register("email")}
         />
@@ -184,12 +180,12 @@ function LoginFields({
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="login-password">MẬT KHẨU</Label>
+        <Label htmlFor="login-password">PASSWORD</Label>
         <Input
           id="login-password"
           type="password"
           autoComplete="current-password"
-          placeholder="Nhập mật khẩu"
+          placeholder="Enter your password"
           {...form.register("password")}
         />
         {form.formState.errors.password && (
@@ -206,8 +202,7 @@ function LoginFields({
         </Alert>
       )}
       <Button type="submit" className="w-full" disabled={mutation.isPending}>
-        {mutation.isPending ? "Đang đăng nhập..." : "Đăng nhập"}
-        <ArrowRight className="size-4" />
+        {mutation.isPending ? "Signing in..." : "Sign in"}
       </Button>
     </form>
   );
@@ -236,12 +231,12 @@ function RegisterFields({
       )}
     >
       <div className="space-y-2">
-        <Label htmlFor="register-name">HỌ VÀ TÊN</Label>
+        <Label htmlFor="register-name">FULL NAME</Label>
         <Input
           id="register-name"
           type="text"
           autoComplete="name"
-          placeholder="Nguyễn Văn A"
+          placeholder="Your full name"
           autoFocus
           {...form.register("full_name")}
         />
@@ -257,7 +252,7 @@ function RegisterFields({
           id="register-email"
           type="email"
           autoComplete="email"
-          placeholder="ban@example.com"
+          placeholder="you@example.com"
           {...form.register("email")}
         />
         {form.formState.errors.email && (
@@ -267,12 +262,12 @@ function RegisterFields({
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="register-password">MẬT KHẨU</Label>
+        <Label htmlFor="register-password">PASSWORD</Label>
         <Input
           id="register-password"
           type="password"
           autoComplete="new-password"
-          placeholder="Ít nhất 12 ký tự"
+          placeholder="At least 12 characters"
           {...form.register("password")}
         />
         {form.formState.errors.password && (
@@ -282,12 +277,12 @@ function RegisterFields({
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="register-confirm-password">NHẬP LẠI MẬT KHẨU</Label>
+        <Label htmlFor="register-confirm-password">CONFIRM PASSWORD</Label>
         <Input
           id="register-confirm-password"
           type="password"
           autoComplete="new-password"
-          placeholder="Nhập lại mật khẩu"
+          placeholder="Re-enter your password"
           {...form.register("confirmPassword")}
         />
         {form.formState.errors.confirmPassword && (
@@ -304,8 +299,7 @@ function RegisterFields({
         </Alert>
       )}
       <Button type="submit" className="w-full" disabled={mutation.isPending}>
-        {mutation.isPending ? "Đang tạo tài khoản..." : "Tạo tài khoản"}
-        <ArrowRight className="size-4" />
+        {mutation.isPending ? "Creating account..." : "Create account"}
       </Button>
     </form>
   );

@@ -10,7 +10,7 @@ export function requireSameOrigin(request: Request): Response | null {
   const origin = request.headers.get("origin");
   if (!origin || origin !== new URL(request.url).origin) {
     return Response.json(
-      { error: "Yêu cầu không hợp lệ", code: "invalid_origin" },
+      { error: "Invalid request", code: "invalid_origin" },
       { status: 403 },
     );
   }
@@ -35,7 +35,7 @@ export async function createBrowserSession(
   if (!data.session_token || !data.user) {
     return Response.json(
       {
-        error: "Phản hồi đăng nhập không hợp lệ",
+        error: "Invalid authentication response",
         code: "invalid_auth_response",
       },
       { status: 502 },
@@ -58,7 +58,7 @@ export async function authorizedBackendProxy(path: string, init?: RequestInit) {
   const token = (await cookies()).get(COOKIE_NAME)?.value;
   if (!token)
     return Response.json(
-      { error: "Vui lòng đăng nhập", code: "unauthenticated" },
+      { error: "Please sign in", code: "unauthenticated" },
       { status: 401 },
     );
   const headers = new Headers(init?.headers);

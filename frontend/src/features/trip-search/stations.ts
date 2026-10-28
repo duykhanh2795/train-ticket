@@ -1,9 +1,14 @@
 export const STATIONS = [
-  { id: "HN", name: "Hà Nội", short: "Hà Nội", subtitle: "Ga Hà Nội" },
-  { id: "ND", name: "Nam Định", short: "Nam Định", subtitle: "Ga Nam Định" },
-  { id: "VINH", name: "Vinh", short: "Vinh", subtitle: "Ga Vinh" },
-  { id: "DN", name: "Đà Nẵng", short: "Đà Nẵng", subtitle: "Ga Đà Nẵng" },
-  { id: "SG", name: "Sài Gòn", short: "Sài Gòn", subtitle: "Ga Sài Gòn" },
+  { id: "HN", name: "Hanoi", short: "Hanoi", subtitle: "Hanoi Station" },
+  {
+    id: "ND",
+    name: "Nam Dinh",
+    short: "Nam Dinh",
+    subtitle: "Nam Dinh Station",
+  },
+  { id: "VINH", name: "Vinh", short: "Vinh", subtitle: "Vinh Station" },
+  { id: "DN", name: "Da Nang", short: "Da Nang", subtitle: "Da Nang Station" },
+  { id: "SG", name: "Saigon", short: "Saigon", subtitle: "Saigon Station" },
 ] as const;
 
 export function stationName(id: string) {
