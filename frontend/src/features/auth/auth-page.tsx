@@ -59,13 +59,14 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
   const returnToBookings = returnTarget === "bookings";
   const returnToAccount = returnTarget === "account";
   const returnToGate = returnTarget === "gate";
+  const returnToAdmin = returnTarget === "admin";
   const requestedPassengers = Number(searchParams.get("pax"));
   const passengerCount = Number.isInteger(requestedPassengers) && requestedPassengers >= 1 && requestedPassengers <= 4 ? requestedPassengers : 1;
   const queryClient = useQueryClient();
   function signedIn(result: AuthResponse) {
     queryClient.setQueryData(["auth", "me"], result);
     router.replace(
-      returnToBooking ? `/booking?pax=${passengerCount}#booking-flow` : returnToBookings ? "/bookings" : returnToAccount ? "/account" : returnToGate ? "/gate" : "/",
+      returnToBooking ? `/booking?pax=${passengerCount}#booking-flow` : returnToBookings ? "/bookings" : returnToAccount ? "/account" : returnToGate ? "/gate" : returnToAdmin ? "/admin" : "/",
     );
   }
   const returnSuffix = returnToBooking
@@ -76,6 +77,8 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
         ? "?return=account"
       : returnToGate
         ? "?return=gate"
+      : returnToAdmin
+        ? "?return=admin"
       : "";
   const otherPage = `${mode === "login" ? "/register" : "/login"}${returnSuffix}`;
 

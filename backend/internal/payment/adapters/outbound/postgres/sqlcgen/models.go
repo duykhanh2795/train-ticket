@@ -8,6 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AdminUser struct {
+	UserID    string
+	GrantedAt pgtype.Timestamptz
+}
+
 type AuthSession struct {
 	TokenHash string
 	UserID    string

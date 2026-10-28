@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"time"
 
+	adminhttp "example.com/train-ticket/internal/admin/adapters/inbound/http"
+	adminpostgres "example.com/train-ticket/internal/admin/adapters/outbound/postgres"
+	adminapp "example.com/train-ticket/internal/admin/application"
 	bookinghttp "example.com/train-ticket/internal/booking/adapters/inbound/http"
 	bookingpostgres "example.com/train-ticket/internal/booking/adapters/outbound/postgres"
 	bookingapp "example.com/train-ticket/internal/booking/application"
@@ -15,6 +18,7 @@ import (
 	inventorypostgres "example.com/train-ticket/internal/inventory/adapters/outbound/postgres"
 	inventoryapp "example.com/train-ticket/internal/inventory/application"
 	platformclock "example.com/train-ticket/internal/platform/clock"
+	platformid "example.com/train-ticket/internal/platform/id"
 	pricingpostgres "example.com/train-ticket/internal/pricing/adapters/outbound/postgres"
 	pricingapp "example.com/train-ticket/internal/pricing/application"
 	schedulehttp "example.com/train-ticket/internal/schedule/adapters/inbound/http"
@@ -63,6 +67,15 @@ func NewHTTPServer(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) (
 	if err != nil {
 		return nil, err
 	}
+	adminRepository, err := adminpostgres.NewRepository(pool)
+	if err != nil {
+		return nil, err
+	}
+	adminService, err := adminapp.NewService(adminRepository, platformid.UUIDGenerator{}, platformclock.SystemClock{})
+	if err != nil {
+		return nil, err
+	}
+	adminHandler := adminhttp.NewHandler(adminService, authHandler.RequireSession())
 
 	bookingModule, err := NewBookingModule(cfg, pool)
 	if err != nil {
@@ -111,7 +124,7 @@ func NewHTTPServer(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) (
 		return nil, err
 	}
 
-	router := transporthttp.NewRouter(logger, searchTripsHandler, listSeatsHandler, authHandler, bookingHandler, bookingReadHandler, passengerHandler, paymentHandler, ticketHandler, gateHandler)
+	router := transporthttp.NewRouter(logger, searchTripsHandler, listSeatsHandler, authHandler, bookingHandler, bookingReadHandler, passengerHandler, paymentHandler, ticketHandler, gateHandler, adminHandler)
 	if err := router.SetTrustedProxies(cfg.HTTPTrustedProxies); err != nil {
 		return nil, err
 	}

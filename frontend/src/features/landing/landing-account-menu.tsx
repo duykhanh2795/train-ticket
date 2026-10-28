@@ -1,18 +1,20 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BadgeCheck, LogOut, Mail, Settings2, Ticket, UserRound, Wallet } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BadgeCheck, LogOut, Mail, Settings2, Shield, Ticket, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { logout } from "@/features/auth/api";
 import type { AuthUser } from "@/features/auth/types";
 import { apiErrorMessage } from "@/shared/api/client";
+import { adminAccess } from "@/features/admin/api";
 
 export function LandingAccountMenu({ user }: { user: AuthUser }) {
   const queryClient = useQueryClient();
+  const admin = useQuery({ queryKey: ["admin", "access"], queryFn: adminAccess, retry: false });
   const signOut = useMutation({
     mutationFn: logout,
-    onSuccess: () => queryClient.setQueryData(["auth", "me"], null),
+    onSuccess: () => { queryClient.setQueryData(["auth", "me"], null); queryClient.removeQueries({ queryKey: ["admin"] }); },
   });
 
   return (
@@ -44,6 +46,10 @@ export function LandingAccountMenu({ user }: { user: AuthUser }) {
           <Ticket className="size-4" aria-hidden="true" />
           My Bookings
         </Link>
+        {admin.data === true && <Link href="/admin" className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm hover:bg-accent hover:text-accent-foreground">
+          <Shield className="size-4" aria-hidden="true" />
+          Admin
+        </Link>}
         <span aria-disabled="true" title="Coming soon" className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground/70">
           <Wallet className="size-4" aria-hidden="true" />
           Promo Codes

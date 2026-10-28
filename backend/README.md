@@ -10,6 +10,9 @@ See [development commands and worker metrics](docs/development.md) for the
 PowerShell helper, pinned code-generation tools, inbox deduplication, and
 consumer failure behavior.
 
+See [admin catalog operations](docs/admin.md) for the admin role, station and
+trip publishing, and read-only booking overview.
+
 For container builds and local Kafka/Neon Compose commands, see
 [container deployment](deployments/README.md).
 
