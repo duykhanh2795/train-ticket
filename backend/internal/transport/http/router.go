@@ -13,6 +13,8 @@ type RouteRegistrar interface {
 
 func NewRouter(logger *slog.Logger, registrars ...RouteRegistrar) *gin.Engine {
 	router := gin.New()
+	// Gin otherwise trusts forwarded IP headers from every client by default.
+	_ = router.SetTrustedProxies(nil)
 	router.Use(requestContext(logger), recoverRequest(), limitRequestBody(1<<20))
 	router.HandleMethodNotAllowed = true
 	router.NoRoute(func(c *gin.Context) {

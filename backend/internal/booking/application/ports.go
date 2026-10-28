@@ -8,7 +8,7 @@ import (
 )
 
 type BookingRepository interface {
-	Create(ctx context.Context, booking bookingdomain.Booking) error
+	Create(ctx context.Context, booking bookingdomain.Booking, fromStop int) error
 	FindForUpdate(ctx context.Context, bookingID string) (bookingdomain.Booking, error)
 	Update(ctx context.Context, booking bookingdomain.Booking) error
 	ListExpiredHolds(ctx context.Context, at time.Time, limit int) ([]string, error)

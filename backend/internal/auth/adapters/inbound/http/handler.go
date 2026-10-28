@@ -44,9 +44,10 @@ type sessionResponse struct {
 }
 
 func (h *Handler) RegisterRoutes(routes *gin.RouterGroup) {
-	routes.POST("/auth/register", transporthttp.Wrap(h.register))
-	routes.POST("/auth/login", transporthttp.Wrap(h.login))
-	protected := routes.Group("/auth", h.RequireSession())
+	authRoutes := routes.Group("/auth", transporthttp.NoStore())
+	authRoutes.POST("/register", transporthttp.Wrap(h.register))
+	authRoutes.POST("/login", transporthttp.Wrap(h.login))
+	protected := authRoutes.Group("", h.RequireSession())
 	protected.GET("/me", transporthttp.Wrap(h.me))
 	protected.POST("/logout", transporthttp.Wrap(h.logout))
 }
@@ -81,7 +82,6 @@ func (h *Handler) register(c *gin.Context) (transporthttp.Result, error) {
 	if err != nil {
 		return transporthttp.Result{}, mapAuthError(err)
 	}
-	c.Header("Cache-Control", "no-store")
 	return transporthttp.Result{Status: http.StatusCreated, Body: sessionResponse{User: publicUser(session.User), SessionToken: session.Token, ExpiresAt: session.ExpiresAt.Format(http.TimeFormat)}}, nil
 }
 
@@ -94,7 +94,6 @@ func (h *Handler) login(c *gin.Context) (transporthttp.Result, error) {
 	if err != nil {
 		return transporthttp.Result{}, mapAuthError(err)
 	}
-	c.Header("Cache-Control", "no-store")
 	return transporthttp.Result{Status: http.StatusOK, Body: sessionResponse{User: publicUser(session.User), SessionToken: session.Token, ExpiresAt: session.ExpiresAt.Format(http.TimeFormat)}}, nil
 }
 
@@ -104,7 +103,6 @@ func (h *Handler) me(c *gin.Context) (transporthttp.Result, error) {
 	if err != nil {
 		return transporthttp.Result{}, mapAuthError(err)
 	}
-	c.Header("Cache-Control", "no-store")
 	return transporthttp.Result{Status: http.StatusOK, Body: gin.H{"user": publicUser(user)}}, nil
 }
 

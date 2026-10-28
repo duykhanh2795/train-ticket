@@ -1,3 +1,14 @@
+-- name: LockBookableTrip :one
+SELECT status FROM train_trips
+WHERE id = sqlc.arg(trip_id)
+FOR SHARE;
+
+-- name: LockOriginDeparture :one
+SELECT departure_at FROM trip_stops
+WHERE trip_id = sqlc.arg(trip_id)
+  AND stop_order = sqlc.arg(from_stop)
+FOR SHARE;
+
 -- name: CreateBooking :exec
 INSERT INTO bookings (
     id, customer_id, trip_id, status, created_at, expires_at, fare_vnd

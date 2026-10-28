@@ -351,6 +351,38 @@ func (q *Queries) ListExpiredBookingHolds(ctx context.Context, arg ListExpiredBo
 	return items, nil
 }
 
+const lockBookableTrip = `-- name: LockBookableTrip :one
+SELECT status FROM train_trips
+WHERE id = $1
+FOR SHARE
+`
+
+func (q *Queries) LockBookableTrip(ctx context.Context, tripID string) (string, error) {
+	row := q.db.QueryRow(ctx, lockBookableTrip, tripID)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
+const lockOriginDeparture = `-- name: LockOriginDeparture :one
+SELECT departure_at FROM trip_stops
+WHERE trip_id = $1
+  AND stop_order = $2
+FOR SHARE
+`
+
+type LockOriginDepartureParams struct {
+	TripID   string
+	FromStop int16
+}
+
+func (q *Queries) LockOriginDeparture(ctx context.Context, arg LockOriginDepartureParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lockOriginDeparture, arg.TripID, arg.FromStop)
+	var departure_at pgtype.Timestamptz
+	err := row.Scan(&departure_at)
+	return departure_at, err
+}
+
 const updateBookingStatus = `-- name: UpdateBookingStatus :execrows
 UPDATE bookings
 SET status = $1

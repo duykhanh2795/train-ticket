@@ -31,6 +31,7 @@ WHERE origin_stop.station_id = $1
   AND trips.service_date = $3::date
   AND trips.status = 'scheduled'
   AND origin_stop.departure_at IS NOT NULL
+  AND origin_stop.departure_at > NOW()
   AND destination_stop.arrival_at IS NOT NULL
 ORDER BY origin_stop.departure_at, trips.id
 `

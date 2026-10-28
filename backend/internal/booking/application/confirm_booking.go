@@ -40,35 +40,47 @@ func (uc *ConfirmBooking) Execute(ctx context.Context, bookingID, customerID str
 
 	var confirmed bookingdomain.Booking
 	err := uc.unitOfWork.WithinTransaction(ctx, func(txCtx context.Context) error {
-		booking, err := uc.bookings.FindForUpdate(txCtx, bookingID)
-		if err != nil {
-			return err
-		}
-		if booking.CustomerID() != customerID {
-			return ErrBookingNotFound
-		}
-		now := uc.clock.Now()
-		if err := booking.Confirm(now); err != nil {
-			return err
-		}
-		if err := uc.reservations.ConfirmSeat(txCtx, bookingID, now); err != nil {
-			return fmt.Errorf("confirm seat reservation: %w", err)
-		}
-		if err := uc.bookings.Update(txCtx, booking); err != nil {
-			return fmt.Errorf("update confirmed booking: %w", err)
-		}
-		event, err := newBookingLifecycleEvent(booking, "booking.confirmed", now)
-		if err != nil {
-			return err
-		}
-		if err := uc.outbox.Enqueue(txCtx, event); err != nil {
-			return fmt.Errorf("enqueue booking confirmed event: %w", err)
-		}
-		confirmed = booking
-		return nil
+		var err error
+		confirmed, err = uc.ConfirmInTransaction(txCtx, bookingID, customerID)
+		return err
 	})
 	if err != nil {
 		return bookingdomain.Booking{}, fmt.Errorf("confirm booking: %w", err)
 	}
 	return confirmed, nil
+}
+
+// ConfirmInTransaction joins an existing transaction, so payment settlement,
+// seat allocation, booking state and the outbox event commit atomically.
+// Callers must lock the booking row before any payment attempt row.
+func (uc *ConfirmBooking) ConfirmInTransaction(ctx context.Context, bookingID, customerID string) (bookingdomain.Booking, error) {
+	bookingID = strings.TrimSpace(bookingID)
+	if bookingID == "" || strings.TrimSpace(customerID) == "" {
+		return bookingdomain.Booking{}, ErrInvalidBookingID
+	}
+	booking, err := uc.bookings.FindForUpdate(ctx, bookingID)
+	if err != nil {
+		return bookingdomain.Booking{}, err
+	}
+	if booking.CustomerID() != customerID {
+		return bookingdomain.Booking{}, ErrBookingNotFound
+	}
+	now := uc.clock.Now()
+	if err := booking.Confirm(now); err != nil {
+		return bookingdomain.Booking{}, err
+	}
+	if err := uc.reservations.ConfirmSeat(ctx, bookingID, now); err != nil {
+		return bookingdomain.Booking{}, fmt.Errorf("confirm seat reservation: %w", err)
+	}
+	if err := uc.bookings.Update(ctx, booking); err != nil {
+		return bookingdomain.Booking{}, fmt.Errorf("update confirmed booking: %w", err)
+	}
+	event, err := newBookingLifecycleEvent(booking, "booking.confirmed", now)
+	if err != nil {
+		return bookingdomain.Booking{}, err
+	}
+	if err := uc.outbox.Enqueue(ctx, event); err != nil {
+		return bookingdomain.Booking{}, fmt.Errorf("enqueue booking confirmed event: %w", err)
+	}
+	return booking, nil
 }

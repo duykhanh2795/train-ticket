@@ -6,6 +6,8 @@ package sqlcgen
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -18,6 +20,8 @@ type Querier interface {
 	ListBookingSeats(ctx context.Context, bookingIds []string) ([]ListBookingSeatsRow, error)
 	ListCustomerBookings(ctx context.Context, arg ListCustomerBookingsParams) ([]ListCustomerBookingsRow, error)
 	ListExpiredBookingHolds(ctx context.Context, arg ListExpiredBookingHoldsParams) ([]string, error)
+	LockBookableTrip(ctx context.Context, tripID string) (string, error)
+	LockOriginDeparture(ctx context.Context, arg LockOriginDepartureParams) (pgtype.Timestamptz, error)
 	MarkOutboxFailed(ctx context.Context, arg MarkOutboxFailedParams) (int64, error)
 	MarkOutboxPublished(ctx context.Context, arg MarkOutboxPublishedParams) (int64, error)
 	OutboxStats(ctx context.Context) (OutboxStatsRow, error)

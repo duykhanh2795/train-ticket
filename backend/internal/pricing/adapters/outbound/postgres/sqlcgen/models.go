@@ -39,6 +39,12 @@ type BookingPassenger struct {
 	FullName  string
 }
 
+type GateAgent struct {
+	UserID    string
+	StationID string
+	CreatedAt pgtype.Timestamptz
+}
+
 type NotificationInbox struct {
 	ConsumerName string
 	EventID      string
@@ -46,15 +52,21 @@ type NotificationInbox struct {
 }
 
 type NotificationJob struct {
-	ID           int64
-	ConsumerName string
-	EventID      string
-	BookingID    string
-	CustomerID   string
-	EventType    string
-	Payload      []byte
-	Status       string
-	CreatedAt    pgtype.Timestamptz
+	ID            int64
+	ConsumerName  string
+	EventID       string
+	BookingID     string
+	CustomerID    string
+	EventType     string
+	Payload       []byte
+	Status        string
+	CreatedAt     pgtype.Timestamptz
+	Attempts      int32
+	NextAttemptAt pgtype.Timestamptz
+	ClaimToken    pgtype.Text
+	ClaimedUntil  pgtype.Timestamptz
+	SentAt        pgtype.Timestamptz
+	LastErrorCode pgtype.Text
 }
 
 type OutboxMessage struct {
@@ -70,6 +82,27 @@ type OutboxMessage struct {
 	ClaimedUntil  pgtype.Timestamptz
 	PublishedAt   pgtype.Timestamptz
 	LastError     pgtype.Text
+}
+
+type PaymentAttempt struct {
+	ID                int64
+	BookingID         string
+	AmountVnd         int64
+	Status            string
+	CheckoutUrl       string
+	ProviderTxnID     pgtype.Text
+	ResponseCode      pgtype.Text
+	TransactionStatus pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	ExpiresAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type SavedPassenger struct {
+	ID        string
+	OwnerID   string
+	FullName  string
+	CreatedAt pgtype.Timestamptz
 }
 
 type SeatReservation struct {
@@ -88,6 +121,20 @@ type Station struct {
 	Name      string
 	City      string
 	CreatedAt pgtype.Timestamptz
+}
+
+type Ticket struct {
+	ID        string
+	BookingID string
+	SeatID    string
+	IssuedAt  pgtype.Timestamptz
+}
+
+type TicketGateScan struct {
+	TicketID    string
+	GateAgentID string
+	StationID   string
+	ScannedAt   pgtype.Timestamptz
 }
 
 type TrainTrip struct {

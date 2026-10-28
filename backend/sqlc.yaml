@@ -60,3 +60,33 @@ sql:
         sql_package: "pgx/v5"
         emit_interface: true
         emit_empty_slices: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/payment/adapters/outbound/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/payment/adapters/outbound/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/passenger/adapters/outbound/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/passenger/adapters/outbound/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/ticket/adapters/outbound/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/ticket/adapters/outbound/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true

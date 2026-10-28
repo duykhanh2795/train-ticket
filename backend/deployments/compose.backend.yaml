@@ -19,7 +19,11 @@ services:
         APP: api
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in deployments/.env}
+      DATABASE_POOL_MAX_CONNS: ${DATABASE_POOL_MAX_CONNS:-10}
       HTTP_ADDRESS: :8080
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
+      VNPAY_RETURN_URL: ${VNPAY_RETURN_URL:-http://localhost:3000/payment/result}
     ports:
       - "127.0.0.1:8080:8080"
     restart: unless-stopped
@@ -32,8 +36,16 @@ services:
         APP: worker
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in deployments/.env}
+      DATABASE_POOL_MAX_CONNS: ${DATABASE_POOL_MAX_CONNS:-10}
       KAFKA_BROKERS: kafka:19092
       WORKER_METRICS_ADDRESS: :9091
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_MODE: ${SMTP_MODE:-starttls}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
     depends_on:
       kafka-init:
         condition: service_completed_successfully

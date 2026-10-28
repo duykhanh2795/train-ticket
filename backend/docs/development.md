@@ -1,5 +1,16 @@
 # Local development
 
+## Local payment simulation
+
+To exercise booking and ticket issuance without VNPAY, set
+`PAYMENT_MODE=mock`, `HTTP_ADDRESS=127.0.0.1:8080`, and
+`PUBLIC_APP_URL=http://localhost:3000` in local configuration, then restart
+the API. Only a loopback-bound API with a local HTTP frontend origin can start
+in mock mode. After holding seats and entering passenger details, continue to
+the payment result page and click **Complete demo payment**. No money moves.
+The booking owner must be signed in; expired or cancelled holds cannot issue
+tickets. Return to `PAYMENT_MODE=vnpay` for the VNPAY sandbox integration.
+
 ## HTTP contracts
 
 Successful endpoints return their own response DTO with the appropriate HTTP
@@ -97,9 +108,18 @@ The worker exposes Prometheus metrics at `http://127.0.0.1:9091/metrics`:
 - `worker_batch_duration_seconds` and `worker_batch_failures_total`
 
 Inbox insertion and notification job creation commit atomically. Kafka offsets
-commit only afterward. Redeliveries create no extra job. Notification jobs stay
-pending until an email provider/delivery worker is implemented; no email is sent
-by this consumer. External delivery will need its own retry/idempotency design.
+commit only afterward. Redeliveries create no extra job. With migration `000013`
+and SMTP configured, the worker claims pending jobs and emails a confirmation
+link for `booking.confirmed`; other lifecycle jobs are marked `skipped`.
+Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_MODE` (`starttls` or `implicit`),
+`SMTP_FROM`, and optionally `SMTP_USERNAME`/`SMTP_PASSWORD` as a pair.
+Set `PUBLIC_APP_URL` to the externally reachable frontend origin so the email
+links to `/bookings/{id}`. Without `SMTP_HOST`, delivery is disabled and jobs
+stay pending. Plain SMTP (`SMTP_MODE=none`) is allowed only to unauthenticated
+loopback servers for local development. The worker retries failures with
+backoff up to ten attempts; exhausted jobs remain `failed` for operator review.
+It records a stable Message-ID but SMTP acceptance and the database update
+cannot be atomic: a crash between them can send a duplicate email.
 
 Consumer failures retry the current event before fetching another. Invalid JSON
 or invalid event contracts stop the worker without committing the offset, so an

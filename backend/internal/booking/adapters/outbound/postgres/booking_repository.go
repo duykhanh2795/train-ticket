@@ -29,12 +29,37 @@ func NewBookingRepository(pool *pgxpool.Pool) (*BookingRepository, error) {
 	return &BookingRepository{pool: pool}, nil
 }
 
-func (r *BookingRepository) Create(ctx context.Context, booking bookingdomain.Booking) error {
+func (r *BookingRepository) Create(ctx context.Context, booking bookingdomain.Booking, fromStop int) error {
 	if err := platformpostgres.RequireTransaction(ctx); err != nil {
 		return err
 	}
 	queries := sqlcgen.New(platformpostgres.Executor(ctx, r.pool))
-	err := queries.CreateBooking(ctx, sqlcgen.CreateBookingParams{
+	tripStatus, err := queries.LockBookableTrip(ctx, booking.TripID())
+	if errors.Is(err, pgx.ErrNoRows) {
+		return bookingapp.ErrTripNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock trip %q for booking: %w", booking.TripID(), err)
+	}
+	if tripStatus != "scheduled" {
+		return bookingapp.ErrTripUnavailable
+	}
+	if fromStop > 32767 {
+		return bookingapp.ErrTripUnavailable
+	}
+	departure, err := queries.LockOriginDeparture(ctx, sqlcgen.LockOriginDepartureParams{
+		TripID: booking.TripID(), FromStop: int16(fromStop),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return bookingapp.ErrTripUnavailable
+	}
+	if err != nil {
+		return fmt.Errorf("lock boarding stop for booking: %w", err)
+	}
+	if !departure.Valid || !departure.Time.After(booking.CreatedAt()) {
+		return bookingapp.ErrTripUnavailable
+	}
+	err = queries.CreateBooking(ctx, sqlcgen.CreateBookingParams{
 		ID:         booking.ID(),
 		CustomerID: booking.CustomerID(),
 		TripID:     booking.TripID(),

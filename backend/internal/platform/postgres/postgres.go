@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,20 +12,21 @@ import (
 var ErrEmptyDatabaseURL = errors.New("database URL is required")
 
 // Open creates and verifies a PostgreSQL connection pool.
-func Open(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+func Open(ctx context.Context, databaseURL string, maxConns int32) (*pgxpool.Pool, error) {
 	if strings.TrimSpace(databaseURL) == "" {
 		return nil, ErrEmptyDatabaseURL
+	}
+	if maxConns < 1 {
+		return nil, errors.New("database pool max connections must be positive")
 	}
 
 	poolConfig, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, err
 	}
-	poolConfig.MaxConns = 20
+	poolConfig.MaxConns = maxConns
 	// Avoid named prepared statements across transaction-pooling proxies.
 	poolConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
-	poolConfig.MinConns = 2
-	poolConfig.MaxConnLifetime = time.Hour
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

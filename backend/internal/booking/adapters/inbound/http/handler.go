@@ -17,32 +17,26 @@ type HoldBookingUseCase interface {
 	Execute(ctx context.Context, command bookingapp.HoldBookingCommand) (bookingdomain.Booking, error)
 }
 
-type ConfirmBookingUseCase interface {
-	Execute(ctx context.Context, bookingID, customerID string) (bookingdomain.Booking, error)
-}
-
 type CancelBookingUseCase interface {
 	Execute(ctx context.Context, bookingID, customerID string) (bookingdomain.Booking, error)
 }
 
 type Handler struct {
 	holdBooking    HoldBookingUseCase
-	confirmBooking ConfirmBookingUseCase
 	cancelBooking  CancelBookingUseCase
 	requireSession gin.HandlerFunc
 }
 
-func NewHandler(holdBooking HoldBookingUseCase, confirmBooking ConfirmBookingUseCase, cancelBooking CancelBookingUseCase, requireSession gin.HandlerFunc) *Handler {
-	if holdBooking == nil || confirmBooking == nil || cancelBooking == nil || requireSession == nil {
+func NewHandler(holdBooking HoldBookingUseCase, cancelBooking CancelBookingUseCase, requireSession gin.HandlerFunc) *Handler {
+	if holdBooking == nil || cancelBooking == nil || requireSession == nil {
 		panic("booking routes require use cases and session middleware")
 	}
-	return &Handler{holdBooking: holdBooking, confirmBooking: confirmBooking, cancelBooking: cancelBooking, requireSession: requireSession}
+	return &Handler{holdBooking: holdBooking, cancelBooking: cancelBooking, requireSession: requireSession}
 }
 
 func (h *Handler) RegisterRoutes(routes *gin.RouterGroup) {
-	protected := routes.Group("/bookings", h.requireSession)
+	protected := routes.Group("/bookings", transporthttp.NoStore(), h.requireSession)
 	protected.POST("/holds", transporthttp.Wrap(h.hold))
-	protected.POST("/:id/confirm", transporthttp.Wrap(h.confirm))
 	protected.POST("/:id/cancel", transporthttp.Wrap(h.cancel))
 }
 
@@ -85,19 +79,6 @@ func (h *Handler) hold(c *gin.Context) (transporthttp.Result, error) {
 	}}, nil
 }
 
-func (h *Handler) confirm(c *gin.Context) (transporthttp.Result, error) {
-	booking, err := h.confirmBooking.Execute(c.Request.Context(), c.Param("id"), transporthttp.UserID(c.Request.Context()))
-	if err != nil {
-		return transporthttp.Result{}, mapBookingError(err)
-	}
-	return transporthttp.Result{Status: http.StatusOK, Body: HoldBookingResponse{
-		BookingID: booking.ID(),
-		Status:    booking.Status().String(),
-		ExpiresAt: booking.ExpiresAt(),
-		FareVND:   quotedFare(booking.FareVND()),
-	}}, nil
-}
-
 func (h *Handler) cancel(c *gin.Context) (transporthttp.Result, error) {
 	booking, err := h.cancelBooking.Execute(c.Request.Context(), c.Param("id"), transporthttp.UserID(c.Request.Context()))
 	if err != nil {
@@ -132,6 +113,9 @@ func mapBookingError(err error) error {
 	case errors.Is(err, inventorydomain.ErrSeatUnavailable):
 		status, message = http.StatusConflict, "seat is unavailable for this segment"
 		code = "seat_unavailable"
+	case errors.Is(err, bookingapp.ErrTripUnavailable):
+		status, message = http.StatusConflict, "trip is no longer available for booking"
+		code = "trip_unavailable"
 	case errors.Is(err, pricingapp.ErrFareUnavailable):
 		status, message = http.StatusConflict, "fare is not configured for this journey"
 		code = "fare_unavailable"

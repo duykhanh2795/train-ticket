@@ -11,8 +11,9 @@ and worker are separate executables over the same modules, not separate services
 | `schedule` | Stations, scheduled train trips, ordered stops, and timetable search |
 | `inventory` | Seat availability and reservations over trip segments |
 | `booking` | Booking lifecycle and coordination of seat holds |
+| `passenger` | Account-owned saved passenger details |
 | `payment` | Payment state, confirmation, and refund rules |
-| `ticket` | Ticket issuance, lookup, and check-in |
+| `ticket` | Ticket issuance, owner-scoped lookup, and station-scoped gate admission |
 | `notification` | Delivery of booking and payment notifications |
 
 ## Package layout
@@ -78,12 +79,14 @@ to proceed independently. The lock, reservation write, and booking insert share
 one Unit of Work transaction. Redis may later help with caching, but it is not
 the source of truth for seat availability.
 
-The API exposes `POST /api/v1/bookings/{id}/confirm` for the current demo
-lifecycle. A separate `cmd/worker` process scans bounded batches of expired
+The API creates a VNPAY checkout for an active hold using
+`POST /api/v1/bookings/{id}/checkout`. Only a verified VNPAY IPN can confirm
+the booking; the browser return page reads persisted payment status. A separate
+`cmd/worker` process scans bounded batches of expired
 holds and releases their seats. The worker rechecks and locks each booking in a
-transaction, so a simultaneous confirmation wins cleanly or the expiry proceeds
-without leaving the seat reserved. Confirmation is not a payment integration;
-a future payment adapter should invoke it only after verifying payment success.
+transaction, so a simultaneous payment confirmation wins cleanly or the expiry
+proceeds without leaving the seat reserved. Payment, booking, reservation and
+the confirmed outbox event commit in one database transaction.
 
 Booking lifecycle events are inserted into `outbox_messages` in the same
 PostgreSQL transaction as hold, confirmation, and expiration. The worker leases
@@ -132,8 +135,15 @@ using `DATABASE_URL`; run `go run ./cmd/worker` separately for hold expiration
 and Kafka outbox delivery.
 Demo timetable and seat rows are provided in `deployments/dev-seed.sql`. Upstash
 Redis is not connected; PostgreSQL is the source of truth for reservations.
-Payment and ticket remain scaffolds. Notification implements inbound event
-validation and a durable inbox/job queue, while email delivery remains future
+Payment has a VNPAY sandbox protocol adapter, SQLc repository, checkout use
+case and idempotent IPN settlement. The handler verifies the callback signature,
+then matches the reference and server-stored amount. It locks the booking before
+the payment attempt to preserve lock order. A paid attempt arriving after the
+hold has expired is recorded as `paid_unfulfilled` for manual reconciliation;
+it does not allocate a seat. Automated refund and reconciliation are future
+work.
+Ticket issuance and gate admission are implemented. Notification implements
+inbound event validation and a durable inbox/job queue, while email delivery remains future
 work. Operational commands and messaging limitations are documented in
 `docs/development.md`.
 

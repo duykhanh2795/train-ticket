@@ -9,8 +9,13 @@ import (
 )
 
 type Querier interface {
+	ClaimNotificationJob(ctx context.Context, arg ClaimNotificationJobParams) (ClaimNotificationJobRow, error)
+	FindConfirmationEmail(ctx context.Context, arg FindConfirmationEmailParams) (FindConfirmationEmailRow, error)
 	InsertInbox(ctx context.Context, arg InsertInboxParams) (int64, error)
 	InsertNotificationJob(ctx context.Context, arg InsertNotificationJobParams) error
+	MarkNotificationAttemptFailed(ctx context.Context, arg MarkNotificationAttemptFailedParams) (int64, error)
+	MarkNotificationSent(ctx context.Context, arg MarkNotificationSentParams) (int64, error)
+	MarkNotificationSkipped(ctx context.Context, arg MarkNotificationSkippedParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

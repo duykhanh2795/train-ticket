@@ -18,5 +18,6 @@ WHERE origin_stop.station_id = sqlc.arg(origin_station_id)
   AND trips.service_date = sqlc.arg(service_date)::date
   AND trips.status = 'scheduled'
   AND origin_stop.departure_at IS NOT NULL
+  AND origin_stop.departure_at > NOW()
   AND destination_stop.arrival_at IS NOT NULL
 ORDER BY origin_stop.departure_at, trips.id;

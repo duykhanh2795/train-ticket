@@ -16,8 +16,10 @@ import (
 	bookingapp "example.com/train-ticket/internal/booking/application"
 	"example.com/train-ticket/internal/config"
 	notificationkafka "example.com/train-ticket/internal/notification/adapters/inbound/kafka"
+	notificationemail "example.com/train-ticket/internal/notification/adapters/outbound/email"
 	notificationpostgres "example.com/train-ticket/internal/notification/adapters/outbound/postgres"
 	notificationapp "example.com/train-ticket/internal/notification/application"
+	platformclock "example.com/train-ticket/internal/platform/clock"
 	"example.com/train-ticket/internal/platform/observability"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -32,6 +34,7 @@ type Worker struct {
 	stats          *bookingpostgres.OutboxRepository
 	publisher      *bookingkafka.Publisher
 	consumer       *notificationkafka.Consumer
+	delivery       batchRunner
 	metrics        *observability.WorkerMetrics
 	metricsAddress string
 }
@@ -72,6 +75,24 @@ func NewWorker(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) (*Wor
 	if err != nil {
 		return nil, err
 	}
+	var delivery batchRunner
+	if cfg.SMTPHost != "" {
+		repository, err := notificationpostgres.NewDeliveryRepository(pool)
+		if err != nil {
+			return nil, err
+		}
+		sender, err := notificationemail.NewSMTPSender(notificationemail.SMTPConfig{
+			Host: cfg.SMTPHost, Port: cfg.SMTPPort, Mode: cfg.SMTPMode,
+			Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom,
+		})
+		if err != nil {
+			return nil, err
+		}
+		delivery, err = notificationapp.NewDeliverEmail(repository, sender, platformclock.SystemClock{}, cfg.PublicAppURL)
+		if err != nil {
+			return nil, err
+		}
+	}
 	publisher, err := bookingkafka.NewPublisher(cfg.KafkaBrokers, cfg.KafkaTopic)
 	if err != nil {
 		return nil, err
@@ -87,7 +108,7 @@ func NewWorker(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) (*Wor
 		_ = publisher.Close()
 		return nil, err
 	}
-	return &Worker{logger: logger, expiry: booking.ExpireHolds, outbox: outbox, stats: stats, publisher: publisher, consumer: consumer, metrics: metrics, metricsAddress: cfg.WorkerMetricsAddress}, nil
+	return &Worker{logger: logger, expiry: booking.ExpireHolds, outbox: outbox, delivery: delivery, stats: stats, publisher: publisher, consumer: consumer, metrics: metrics, metricsAddress: cfg.WorkerMetricsAddress}, nil
 }
 
 func (w *Worker) Run(parent context.Context) error {
@@ -115,6 +136,9 @@ func (w *Worker) Run(parent context.Context) error {
 	})
 	launch(func() { w.runBatchLoop(ctx, "expiry", w.expiry, 5*time.Second) })
 	launch(func() { w.runBatchLoop(ctx, "outbox", w.outbox, 2*time.Second) })
+	if w.delivery != nil {
+		launch(func() { w.runBatchLoop(ctx, "email", w.delivery, 5*time.Second) })
+	}
 	launch(func() { w.runStatsLoop(ctx) })
 	w.logger.Info("background worker started", "metrics_address", w.metricsAddress)
 	var runErr error
@@ -138,7 +162,7 @@ func (w *Worker) runBatchLoop(ctx context.Context, task string, runner batchRunn
 		count := 0
 		var err error
 		iterations := 1
-		if task == "outbox" {
+		if task == "outbox" || task == "email" {
 			iterations = 100
 		}
 		// Drain a bounded number of events without claiming an entire batch's

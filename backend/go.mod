@@ -9,6 +9,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/segmentio/kafka-go v0.4.51
 	github.com/spf13/viper v1.21.0
+	github.com/wneessen/go-mail v0.8.1
 )
 
 require (

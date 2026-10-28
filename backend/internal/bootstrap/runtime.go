@@ -40,9 +40,11 @@ func Open(ctx context.Context) (*Runtime, error) {
 
 	connectCtx, cancel := context.WithTimeout(ctx, databaseConnectTimeout)
 	defer cancel()
-	pool, err := platformpostgres.Open(connectCtx, cfg.DatabaseURL)
+	pool, err := platformpostgres.Open(connectCtx, cfg.DatabaseURL, cfg.DatabasePoolMaxConns)
 	if err != nil {
-		return nil, fmt.Errorf("connect to PostgreSQL: %w", err)
+		// Driver errors can contain the connection URL. Startup errors are
+		// logged by cmd, so keep credentials out of process logs.
+		return nil, errors.New("connect to PostgreSQL failed; check DATABASE_URL and network")
 	}
 
 	return &Runtime{Config: cfg, Logger: logger, Postgres: pool}, nil

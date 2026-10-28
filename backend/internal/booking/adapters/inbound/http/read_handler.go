@@ -30,7 +30,7 @@ func NewReadHandler(readBookings BookingReadUseCase, requireSession gin.HandlerF
 }
 
 func (h *ReadHandler) RegisterRoutes(routes *gin.RouterGroup) {
-	protected := routes.Group("/bookings", h.requireSession)
+	protected := routes.Group("/bookings", transporthttp.NoStore(), h.requireSession)
 	protected.GET("", transporthttp.Wrap(h.list))
 	protected.GET("/:id", transporthttp.Wrap(h.get))
 }
@@ -55,7 +55,6 @@ func (h *ReadHandler) list(c *gin.Context) (transporthttp.Result, error) {
 	for _, item := range page.Items {
 		items = append(items, toBookingViewResponse(item))
 	}
-	c.Header("Cache-Control", "private, no-store")
 	return transporthttp.Result{Status: http.StatusOK, Body: gin.H{
 		"bookings": items, "has_more": page.HasMore, "limit": limit, "offset": offset,
 	}}, nil
@@ -66,7 +65,6 @@ func (h *ReadHandler) get(c *gin.Context) (transporthttp.Result, error) {
 	if err != nil {
 		return transporthttp.Result{}, mapBookingError(err)
 	}
-	c.Header("Cache-Control", "private, no-store")
 	return transporthttp.Result{Status: http.StatusOK, Body: toBookingViewResponse(view)}, nil
 }
 

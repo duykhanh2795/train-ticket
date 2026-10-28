@@ -16,6 +16,14 @@ type requestIDKey struct{}
 
 func RequestID(ctx context.Context) string { id, _ := ctx.Value(requestIDKey{}).(string); return id }
 
+// NoStore prevents HTTP caches from retaining responses containing account data.
+func NoStore() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Next()
+	}
+}
+
 func requestContext(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Generate an ID locally so arbitrary client headers cannot spoof log IDs.

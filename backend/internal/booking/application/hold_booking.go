@@ -30,6 +30,7 @@ const MaxPassengersPerBooking = 6
 
 var ErrInvalidHoldCommand = errors.New("customer, trip, seat, and valid stop range are required")
 var ErrTripNotFound = errors.New("trip not found")
+var ErrTripUnavailable = errors.New("trip is not available for booking")
 var ErrBookingNotFound = errors.New("booking not found")
 
 type HoldBooking struct {
@@ -104,7 +105,7 @@ func (uc *HoldBooking) Execute(ctx context.Context, command HoldBookingCommand) 
 		}
 		// Save first so the reservation can reference its booking. Both writes
 		// are in one transaction, so a failed seat hold rolls this insert back.
-		if err := uc.bookings.Create(txCtx, booking); err != nil {
+		if err := uc.bookings.Create(txCtx, booking, command.FromStop); err != nil {
 			return fmt.Errorf("save booking: %w", err)
 		}
 		for _, passenger := range passengers {
